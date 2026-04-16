@@ -1,0 +1,64 @@
+from pathlib import Path
+
+import pytest
+
+from codex_hotswap.config import ConfigError, load_config
+
+
+def test_load_config_builds_target_args(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """version = 1
+
+[settings]
+max_swaps = 4
+swap_delay_seconds = 2
+
+[[targets]]
+name = "primary"
+profile = "default"
+model = "gpt-5.4"
+oss = true
+local_provider = "ollama"
+config_overrides = ["model_reasoning_effort=\\"high\\""]
+extra_args = ["--search"]
+"""
+    )
+
+    config = load_config(path)
+    assert config.settings.max_swaps == 4
+    assert config.targets[0].codex_args() == [
+        "--profile",
+        "default",
+        "--model",
+        "gpt-5.4",
+        "--oss",
+        "--local-provider",
+        "ollama",
+        "--config",
+        'model_reasoning_effort="high"',
+        "--search",
+    ]
+
+
+def test_load_config_requires_target() -> None:
+    with pytest.raises(ConfigError):
+        load_config(Path("/does/not/exist"))
+
+
+def test_load_config_rejects_duplicate_names(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """version = 1
+
+[[targets]]
+name = "same"
+
+[[targets]]
+name = "same"
+"""
+    )
+
+    with pytest.raises(ConfigError, match="Duplicate target name"):
+        load_config(path)
+
