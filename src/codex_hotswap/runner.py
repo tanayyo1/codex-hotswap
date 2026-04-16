@@ -30,6 +30,13 @@ class RunOutcome:
     trigger_pattern: str | None
 
 
+@dataclass(slots=True)
+class InteractiveResult:
+    output: bytearray
+    exit_code: int
+    live_trigger_pattern: str | None = None
+
+
 class CodexRunner:
     def __init__(self, config: Config, state_store: StateStore, detector: TriggerDetector | None = None) -> None:
         self.config = config
@@ -86,8 +93,8 @@ class CodexRunner:
         print(f"codex-hotswap: logging into target '{target.name}'")
         if target.codex_home:
             print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
-        _, exit_code = self._run_passthrough(target, ["login", *login_args])
-        return exit_code
+        result = self._run_passthrough(target, ["login", *login_args])
+        return result.exit_code
 
     def login_status(self, target: Target) -> tuple[bool, str]:
         command = self.build_command(target, ["login", "status"])
@@ -99,12 +106,19 @@ class CodexRunner:
         return False, text
 
     def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
-        output, exit_code = self._run_passthrough(target, user_args, announce=True)
-        decoded_output = output.decode("utf-8", errors="replace")
+        result = self._run_passthrough(target, user_args, announce=True)
+        if result.live_trigger_pattern is not None:
+            return RunOutcome(
+                exit_code=result.exit_code,
+                triggered=True,
+                trigger_pattern=result.live_trigger_pattern,
+            )
+
+        decoded_output = result.output.decode("utf-8", errors="replace")
         detection = self.detector.detect(decoded_output)
         return RunOutcome(
-            exit_code=exit_code,
-            triggered=exit_code != 0 and detection.triggered,
+            exit_code=result.exit_code,
+            triggered=result.exit_code != 0 and detection.triggered,
             trigger_pattern=detection.pattern,
         )
 
@@ -114,7 +128,7 @@ class CodexRunner:
         user_args: list[str],
         *,
         announce: bool = False,
-    ) -> tuple[bytearray, int]:
+    ) -> InteractiveResult:
         command = self.build_command(target, user_args)
         env = self.build_env(target)
         if announce:
@@ -134,7 +148,7 @@ class CodexRunner:
             os.makedirs(codex_home, exist_ok=True)
         return env
 
-    def _spawn_interactive(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+    def _spawn_interactive(self, command: list[str], env: dict[str, str]) -> InteractiveResult:
         if self._should_use_script():
             return self._spawn_with_script(command, env)
         return self._spawn_pty(command, env)
@@ -147,26 +161,57 @@ class CodexRunner:
             and os.isatty(sys.stdout.fileno())
         )
 
-    def _spawn_with_script(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+    def _spawn_with_script(self, command: list[str], env: dict[str, str]) -> InteractiveResult:
         with tempfile.NamedTemporaryFile(prefix="codex-hotswap-", delete=False) as transcript_file:
             transcript_path = transcript_file.name
 
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 ["script", "-qefc", shlex.join(command), transcript_path],
                 env=env,
+                start_new_session=True,
             )
             transcript = bytearray()
-            if os.path.exists(transcript_path):
-                transcript.extend(Path(transcript_path).read_bytes())
-            return transcript, result.returncode
+            offset = 0
+            live_trigger_pattern = None
+            sent_interrupt = False
+
+            while True:
+                if os.path.exists(transcript_path):
+                    data = self._read_appended_bytes(Path(transcript_path), offset)
+                    if data:
+                        offset += len(data)
+                        transcript.extend(data)
+                        if live_trigger_pattern is None:
+                            detection = self.detector.detect(transcript.decode("utf-8", errors="replace"))
+                            if detection.triggered:
+                                live_trigger_pattern = detection.pattern
+                                os.killpg(process.pid, signal.SIGINT)
+                                sent_interrupt = True
+
+                returncode = process.poll()
+                if returncode is not None:
+                    if os.path.exists(transcript_path):
+                        data = self._read_appended_bytes(Path(transcript_path), offset)
+                        if data:
+                            transcript.extend(data)
+                    return InteractiveResult(
+                        output=transcript,
+                        exit_code=returncode,
+                        live_trigger_pattern=live_trigger_pattern,
+                    )
+
+                if live_trigger_pattern is not None and not sent_interrupt:
+                    os.killpg(process.pid, signal.SIGINT)
+                    sent_interrupt = True
+                time.sleep(0.1)
         finally:
             try:
                 os.remove(transcript_path)
             except FileNotFoundError:
                 pass
 
-    def _spawn_pty(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+    def _spawn_pty(self, command: list[str], env: dict[str, str]) -> InteractiveResult:
         output = bytearray()
         pid, master_fd = pty.fork()
         if pid == 0:
@@ -176,6 +221,8 @@ class CodexRunner:
         stdout_fd = sys.stdout.fileno()
         old_tty_settings = None
         previous_winch_handler = None
+        live_trigger_pattern = None
+        interrupt_sent_at = None
 
         def sync_winsize(*_: object) -> None:
             try:
@@ -193,12 +240,13 @@ class CodexRunner:
 
         try:
             stdin_open = True
+            exit_status = None
             while True:
                 read_fds = [master_fd]
                 if stdin_open:
                     read_fds.append(stdin_fd)
 
-                ready, _, _ = select.select(read_fds, [], [])
+                ready, _, _ = select.select(read_fds, [], [], 0.1)
 
                 if master_fd in ready:
                     try:
@@ -212,6 +260,13 @@ class CodexRunner:
                             break
                         raise
 
+                    if live_trigger_pattern is None:
+                        detection = self.detector.detect(output.decode("utf-8", errors="replace"))
+                        if detection.triggered:
+                            live_trigger_pattern = detection.pattern
+                            os.kill(pid, signal.SIGINT)
+                            interrupt_sent_at = time.time()
+
                 if stdin_open and stdin_fd in ready:
                     try:
                         user_input = os.read(stdin_fd, 1024)
@@ -222,6 +277,15 @@ class CodexRunner:
                             stdin_open = False
                         else:
                             os.write(master_fd, user_input)
+
+                waited_pid, status = os.waitpid(pid, os.WNOHANG)
+                if waited_pid == pid:
+                    exit_status = status
+                    break
+
+                if interrupt_sent_at is not None and time.time() - interrupt_sent_at > 1:
+                    os.kill(pid, signal.SIGTERM)
+                    interrupt_sent_at = None
         finally:
             if previous_winch_handler is not None:
                 signal.signal(signal.SIGWINCH, previous_winch_handler)
@@ -229,8 +293,18 @@ class CodexRunner:
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_settings)
             os.close(master_fd)
 
-        _, status = os.waitpid(pid, 0)
-        return output, os.waitstatus_to_exitcode(status)
+        if exit_status is None:
+            _, exit_status = os.waitpid(pid, 0)
+        return InteractiveResult(
+            output=output,
+            exit_code=os.waitstatus_to_exitcode(exit_status),
+            live_trigger_pattern=live_trigger_pattern,
+        )
+
+    def _read_appended_bytes(self, path: Path, offset: int) -> bytes:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            return handle.read()
 
 
 def format_target_line(config: Config, state_store: StateStore, target_name: str) -> str:

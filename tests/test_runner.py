@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from codex_hotswap.config import Config, Settings, Target
-from codex_hotswap.runner import CodexRunner
+from codex_hotswap.runner import CodexRunner, InteractiveResult
 from codex_hotswap.state import StateStore
 
 
@@ -68,3 +68,21 @@ def test_login_status_detects_logged_in(monkeypatch, tmp_path: Path) -> None:
 
     assert logged_in is True
     assert "Logged in" in status_text
+
+
+def test_invoke_returns_triggered_for_live_detection(monkeypatch, tmp_path: Path) -> None:
+    runner = build_runner(tmp_path)
+
+    def fake_run_passthrough(target, user_args, announce=False):
+        return InteractiveResult(
+            output=bytearray(b"usage limit"),
+            exit_code=0,
+            live_trigger_pattern=r"\brate[_ -]?limit\b",
+        )
+
+    monkeypatch.setattr(runner, "_run_passthrough", fake_run_passthrough)
+
+    outcome = runner._invoke(runner.config.targets[0], [])
+
+    assert outcome.triggered is True
+    assert outcome.trigger_pattern == r"\brate[_ -]?limit\b"
