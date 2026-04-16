@@ -1,7 +1,7 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 Use multiple Codex accounts in the terminal without breaking your normal repo history or `/resume` flow.
 
@@ -50,7 +50,7 @@ After that, keep working in your repo the normal way:
 
 ```bash
 cd ~/tonr
-codex-hot
+codex
 ```
 
 ## Install
@@ -137,10 +137,10 @@ codex-hotswap use acc1
 Then work normally:
 
 ```bash
-codex-hot
+codex
 ```
 
-If you installed the shim, you can type `codex` instead.
+If you did not install the shim, use `codex-hot` instead.
 
 Examples:
 
