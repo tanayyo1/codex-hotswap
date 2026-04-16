@@ -4,11 +4,15 @@ from dataclasses import dataclass
 import errno
 import fcntl
 import os
+from pathlib import Path
 import pty
 import select
+import shlex
+import shutil
 import signal
 import struct
 import sys
+import tempfile
 import termios
 import subprocess
 import time
@@ -117,7 +121,7 @@ class CodexRunner:
             print(f"codex-hotswap: using target '{target.name}'")
             if target.codex_home:
                 print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
-        return self._spawn_pty(command, env)
+        return self._spawn_interactive(command, env)
 
     def build_command(self, target: Target, user_args: list[str]) -> list[str]:
         return ["codex", *target.codex_args(), *user_args]
@@ -129,6 +133,38 @@ class CodexRunner:
         if codex_home:
             os.makedirs(codex_home, exist_ok=True)
         return env
+
+    def _spawn_interactive(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+        if self._should_use_script():
+            return self._spawn_with_script(command, env)
+        return self._spawn_pty(command, env)
+
+    def _should_use_script(self) -> bool:
+        return (
+            sys.platform.startswith("linux")
+            and shutil.which("script") is not None
+            and os.isatty(sys.stdin.fileno())
+            and os.isatty(sys.stdout.fileno())
+        )
+
+    def _spawn_with_script(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+        with tempfile.NamedTemporaryFile(prefix="codex-hotswap-", delete=False) as transcript_file:
+            transcript_path = transcript_file.name
+
+        try:
+            result = subprocess.run(
+                ["script", "-qefc", shlex.join(command), transcript_path],
+                env=env,
+            )
+            transcript = bytearray()
+            if os.path.exists(transcript_path):
+                transcript.extend(Path(transcript_path).read_bytes())
+            return transcript, result.returncode
+        finally:
+            try:
+                os.remove(transcript_path)
+            except FileNotFoundError:
+                pass
 
     def _spawn_pty(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
         output = bytearray()
