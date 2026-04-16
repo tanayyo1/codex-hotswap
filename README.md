@@ -1,7 +1,7 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.1.2-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 Use multiple Codex accounts in the terminal and automatically switch to the next one when the current one hits a limit or similar failure.
 

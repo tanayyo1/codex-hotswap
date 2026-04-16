@@ -8,9 +8,15 @@ def test_trigger_detector_matches_rate_limit() -> None:
     assert result.pattern is not None
 
 
+def test_trigger_detector_matches_usage_limit_banner() -> None:
+    detector = TriggerDetector()
+    result = detector.detect("You've hit your usage limit. To get more access now, send a request to your admin or try again later.")
+    assert result.triggered is True
+    assert result.pattern is not None
+
+
 def test_trigger_detector_ignores_normal_output() -> None:
     detector = TriggerDetector()
     result = detector.detect("All tasks completed successfully")
     assert result.triggered is False
     assert result.pattern is None
-

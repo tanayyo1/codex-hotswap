@@ -6,6 +6,8 @@ import re
 
 DEFAULT_TRIGGER_PATTERNS = [
     r"\brate[_ -]?limit\b",
+    r"\busage limit\b",
+    r"\bhit your usage limit\b",
     r"\bquota\b",
     r"\btoo many requests\b",
     r"\b429\b",
@@ -30,4 +32,3 @@ class TriggerDetector:
             if pattern.search(text):
                 return DetectionResult(triggered=True, pattern=pattern.pattern)
         return DetectionResult(triggered=False, pattern=None)
-
