@@ -39,11 +39,18 @@ class InteractiveResult:
 
 
 class CodexRunner:
-    def __init__(self, config: Config, state_store: StateStore, detector: TriggerDetector | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        state_store: StateStore,
+        detector: TriggerDetector | None = None,
+        real_codex_binary: str | None = None,
+    ) -> None:
         self.config = config
         self.state_store = state_store
         self.detector = detector or TriggerDetector()
         self.auth_manager = AuthManager(config)
+        self.real_codex_binary = real_codex_binary
 
     def run(self, user_args: list[str]) -> int:
         state = self.state_store.load()
@@ -147,15 +154,42 @@ class CodexRunner:
         env = self.build_runtime_env()
         if announce:
             print(f"codex-hotswap: using target '{target.name}'")
+            print(f"codex-hotswap: shared CODEX_HOME={self.config.shared_codex_home_path()}")
             if target.codex_home:
-                print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
+                print(f"codex-hotswap: auth vault={target.expanded_codex_home()}")
         return self._spawn_interactive(command, env)
 
     def build_command(self, target: Target, user_args: list[str]) -> list[str]:
         return [self.codex_binary(), *target.codex_args(), *user_args]
 
     def codex_binary(self) -> str:
-        return os.environ.get("CODEX_HOTSWAP_REAL_BIN", "codex")
+        if self.real_codex_binary:
+            return self.real_codex_binary
+
+        env_binary = os.environ.get("CODEX_HOTSWAP_REAL_BIN")
+        if env_binary:
+            return env_binary
+
+        resolved = shutil.which("codex")
+        if resolved is None:
+            return "codex"
+
+        shim_real = self._real_binary_from_shim(Path(resolved))
+        return shim_real or resolved
+
+    def _real_binary_from_shim(self, path: Path) -> str | None:
+        try:
+            text = path.read_text(errors="ignore")
+        except OSError:
+            return None
+        if "# codex-hotswap shim" not in text:
+            return None
+        for line in text.splitlines():
+            if line.startswith("export CODEX_HOTSWAP_REAL_BIN="):
+                value = line.split("=", 1)[1].strip().strip('"')
+                if value:
+                    return value
+        return None
 
     def build_runtime_env(self) -> dict[str, str]:
         env = os.environ.copy()

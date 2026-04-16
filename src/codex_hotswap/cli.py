@@ -48,6 +48,9 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     setup_parser.add_argument("--cooldown-minutes", type=int, default=240, help="default_cooldown_minutes setting")
     setup_parser.add_argument("--replace-targets", action="store_true", help="Replace existing targets instead of appending")
     setup_parser.add_argument("--login", action="store_true", help="Run codex login for each created target after setup")
+    setup_parser.add_argument("--install-shim", action="store_true", help="Install the codex shim after setup")
+    setup_parser.add_argument("--shim-path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+    setup_parser.add_argument("--shim-force", action="store_true", help="Overwrite an existing codex shim when using --install-shim")
     setup_parser.add_argument("--force", action="store_true", help="Allow creating config if missing and replacing generated setup safely")
 
     subparsers.add_parser("list", help="List configured targets", parents=[common])
@@ -155,6 +158,13 @@ def main() -> int:
                     exit_code = runner.login(target, [])
                     if exit_code != 0:
                         return exit_code
+            if args.install_shim:
+                try:
+                    path = _install_codex_shim(args.shim_path, force=args.shim_force)
+                except ConfigError as exc:
+                    print(f"codex-hotswap: {exc}", file=sys.stderr)
+                    return 1
+                print(f"codex-hotswap: installed shim at {path}")
             return 0
         except ConfigError as exc:
             print(f"codex-hotswap: {exc}", file=sys.stderr)

@@ -119,6 +119,53 @@ def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
     assert 'name = "backup"' in text
 
 
+def test_setup_can_login_and_install_shim_in_one_command(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    shim_path = tmp_path / "bin" / "codex"
+    logged_targets: list[str] = []
+    installed_paths: list[Path] = []
+
+    def fake_login(self, target, login_args, relogin=False):
+        logged_targets.append(target.name)
+        return 0
+
+    def fake_install(path, real_bin=None, force=False):
+        installed_paths.append(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# codex-hotswap shim\n")
+        return path
+
+    monkeypatch.setattr("codex_hotswap.cli.CodexRunner.login", fake_login)
+    monkeypatch.setattr("codex_hotswap.cli._install_codex_shim", fake_install)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "setup",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--force",
+            "--count",
+            "2",
+            "--prefix",
+            "acc",
+            "--login",
+            "--install-shim",
+            "--shim-path",
+            str(shim_path),
+        ],
+    )
+
+    assert main() == 0
+    assert logged_targets == ["acc1", "acc2"]
+    assert installed_paths == [shim_path]
+    assert shim_path.exists()
+    assert 'shared_codex_home = "~/.codex"' in config_path.read_text()
+
+
 def test_merge_setup_targets_replaces_existing_generated_targets() -> None:
     config = Config(
         path=Path("/tmp/config.toml"),
@@ -157,3 +204,48 @@ def test_install_and_uninstall_codex_shim(tmp_path: Path) -> None:
     assert _resolve_real_codex_binary(shim_path) == real_bin
     assert _uninstall_codex_shim(shim_path) is True
     assert not shim_path.exists()
+
+
+def test_install_codex_shim_refuses_to_replace_non_shim_without_force(tmp_path: Path) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+    shim_path.parent.mkdir(parents=True)
+    shim_path.write_text("#!/bin/sh\nexit 0\n")
+    real_bin = tmp_path / "real" / "codex"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\nexit 0\n")
+
+    try:
+        _install_codex_shim(shim_path, real_bin=real_bin, force=False)
+    except ConfigError as exc:
+        assert "already exists" in str(exc)
+    else:
+        raise AssertionError("expected ConfigError")
+
+
+def test_setup_install_shim_failure_returns_error(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+
+    def fake_install(path, real_bin=None, force=False):
+        raise ConfigError("shim failed")
+
+    monkeypatch.setattr("codex_hotswap.cli._install_codex_shim", fake_install)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "setup",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--force",
+            "--count",
+            "2",
+            "--prefix",
+            "acc",
+            "--install-shim",
+        ],
+    )
+
+    assert main() == 1

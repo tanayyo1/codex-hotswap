@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.1]
+
+### Changed
+
+- Added a one-command setup path that can create targets, log them in, and install the `codex` shim in one shot.
+- Made binary resolution skip the shim automatically so setup and login paths do not recurse into wrapped `codex`.
+
 ## [0.2.0]
 
 ### Changed

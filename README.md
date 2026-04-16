@@ -39,14 +39,12 @@ For four accounts named `acc1`, `acc2`, `acc3`, `acc4`:
 
 ```bash
 pipx install git+https://github.com/tanayyo1/codex-hotswap.git
-codex-hotswap setup --force --count 4 --prefix acc
-codex-hotswap login acc1
-codex-hotswap login acc2
-codex-hotswap login acc3
-codex-hotswap login acc4
+codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
 codex-hotswap use acc1
-codex-hot
+codex
 ```
+
+`setup --login --install-shim` is the shortest path. It creates the targets, walks through each account login, and installs the optional `codex` shim. Each account login still needs its own interactive browser auth.
 
 After that, keep working in your repo the normal way:
 
@@ -115,7 +113,7 @@ codex-hotswap login extra
 ### Numbered Accounts
 
 ```bash
-codex-hotswap setup --force --count 4 --prefix acc
+codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
 ```
 
 This creates:
@@ -125,16 +123,8 @@ This creates:
 - `acc3` -> `~/.codex-acc3`
 - `acc4` -> `~/.codex-acc4`
 
-Then log in once to each account:
-
-```bash
-codex-hotswap login acc1
-codex-hotswap login acc2
-codex-hotswap login acc3
-codex-hotswap login acc4
-```
-
 If you rerun `setup` with the same names, the generated targets are updated instead of failing on duplicates.
+If you do not want the shim, drop `--install-shim`.
 
 ## Daily Use
 

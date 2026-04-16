@@ -20,13 +20,15 @@ def test_build_command_uses_target_args(tmp_path: Path) -> None:
     runner = build_runner(tmp_path)
     target = runner.config.targets[0]
 
-    assert runner.build_command(target, ["resume", "--last"]) == [
-        "codex",
+    command = runner.build_command(target, ["resume", "--last"])
+
+    assert command[1:] == [
         "--profile",
         "default",
         "resume",
         "--last",
     ]
+    assert Path(command[0]).name == "codex"
 
 
 def test_build_runtime_env_uses_shared_codex_home(tmp_path: Path) -> None:
@@ -130,3 +132,19 @@ def test_invoke_activates_target_before_runtime_run(monkeypatch, tmp_path: Path)
 
     assert activated == ["primary"]
     assert outcome.triggered is False
+
+
+def test_codex_binary_peels_back_to_real_binary_from_shim(tmp_path: Path, monkeypatch) -> None:
+    shim = tmp_path / "codex"
+    real = tmp_path / "real-codex"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        "# codex-hotswap shim\n"
+        f'export CODEX_HOTSWAP_REAL_BIN="{real}"\n'
+        'exec codex-hot "$@"\n'
+    )
+
+    runner = build_runner(tmp_path)
+    monkeypatch.setattr("codex_hotswap.runner.shutil.which", lambda name: str(shim) if name == "codex" else None)
+
+    assert runner.codex_binary() == str(real)
