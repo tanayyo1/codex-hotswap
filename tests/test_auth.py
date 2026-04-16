@@ -1,6 +1,7 @@
 from pathlib import Path
+import json
 
-from codex_hotswap.auth import AuthManager
+from codex_hotswap.auth import ACTIVE_TARGET_METADATA, AuthManager
 from codex_hotswap.config import Config, Settings, Target
 
 
@@ -21,3 +22,7 @@ def test_auth_manager_activates_target_auth_into_shared_home(tmp_path: Path) -> 
 
     assert destination == shared_home / "auth.json"
     assert destination.read_text() == '{"tokens": {"account_id": "abc"}}'
+    metadata = json.loads((shared_home / ACTIVE_TARGET_METADATA).read_text())
+    assert metadata["target"] == "primary"
+    assert metadata["auth_vault"] == str(vault_home)
+    assert metadata["copied_files"] == ["auth.json"]

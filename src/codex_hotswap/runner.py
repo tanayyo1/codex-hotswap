@@ -23,6 +23,8 @@ from .config import Config, ConfigError, Target
 from .detect import TriggerDetector
 from .state import StateStore
 
+RUNTIME_LOCK_FILENAME = ".codex-hotswap.lock"
+
 
 @dataclass(slots=True)
 class RunOutcome:
@@ -36,6 +38,52 @@ class InteractiveResult:
     output: bytearray
     exit_code: int
     live_trigger_pattern: str | None = None
+
+
+class SharedHomeSessionLock:
+    def __init__(self, shared_home: Path, initial_target: str) -> None:
+        self.shared_home = shared_home
+        self.current_target = initial_target
+        self.lock_path = shared_home / RUNTIME_LOCK_FILENAME
+        self._handle = None
+
+    def __enter__(self) -> "SharedHomeSessionLock":
+        self.shared_home.mkdir(parents=True, exist_ok=True)
+        self._handle = self.lock_path.open("a+", encoding="utf-8")
+        try:
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            self._handle.close()
+            self._handle = None
+            raise ConfigError(
+                "another codex-hotswap session is already using the shared CODEX_HOME; "
+                "finish that session first or use a different shared_codex_home"
+            ) from exc
+        self.update_target(self.current_target)
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._handle is None:
+            return
+        try:
+            self._handle.seek(0)
+            self._handle.truncate()
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+            fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._handle.close()
+            self._handle = None
+
+    def update_target(self, target: str) -> None:
+        self.current_target = target
+        if self._handle is None:
+            return
+        self._handle.seek(0)
+        self._handle.truncate()
+        self._handle.write(f"pid={os.getpid()}\ntarget={target}\n")
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
 
 
 class CodexRunner:
@@ -59,40 +107,41 @@ class CodexRunner:
         except ValueError:
             print("codex-hotswap: no runnable targets available")
             return 1
-        target = self.config.get_target(current_name)
+        try:
+            with self._acquire_runtime_lock(current_name) as runtime_lock:
+                target = self.config.get_target(current_name)
+                swaps = 0
+                current_args = list(user_args)
+                while True:
+                    outcome = self._invoke(target, current_args)
+                    if not outcome.triggered:
+                        return outcome.exit_code
 
-        swaps = 0
-        current_args = list(user_args)
-        while True:
-            try:
-                outcome = self._invoke(target, current_args)
-            except ConfigError as exc:
-                print(f"codex-hotswap: {exc}")
-                return 1
-            if not outcome.triggered:
-                return outcome.exit_code
+                    self.state_store.mark_exhausted(
+                        state,
+                        target.name,
+                        f"triggered by {outcome.trigger_pattern}",
+                        cooldown_minutes=self.config.settings.default_cooldown_minutes,
+                    )
+                    next_name = self.state_store.next_available_target(self.config, state, start_from=target.name)
+                    if next_name is None:
+                        print("codex-hotswap: no non-exhausted targets remain")
+                        return 1
 
-            self.state_store.mark_exhausted(
-                state,
-                target.name,
-                f"triggered by {outcome.trigger_pattern}",
-                cooldown_minutes=self.config.settings.default_cooldown_minutes,
-            )
-            next_name = self.state_store.next_available_target(self.config, state, start_from=target.name)
-            if next_name is None:
-                print("codex-hotswap: no non-exhausted targets remain")
-                return 1
+                    swaps += 1
+                    if swaps > self.config.settings.max_swaps:
+                        print(f"codex-hotswap: reached max swap attempts ({self.config.settings.max_swaps})")
+                        return 1
 
-            swaps += 1
-            if swaps > self.config.settings.max_swaps:
-                print(f"codex-hotswap: reached max swap attempts ({self.config.settings.max_swaps})")
-                return 1
-
-            self.state_store.set_current_target(state, next_name)
-            target = self.config.get_target(next_name)
-            print(f"codex-hotswap: trigger matched; rotating to '{next_name}'")
-            time.sleep(self.config.settings.swap_delay_seconds)
-            current_args = ["resume", "--last"]
+                    self.state_store.set_current_target(state, next_name)
+                    runtime_lock.update_target(next_name)
+                    target = self.config.get_target(next_name)
+                    print(f"codex-hotswap: trigger matched; rotating to '{next_name}'")
+                    time.sleep(self.config.settings.swap_delay_seconds)
+                    current_args = ["resume", "--last"]
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}")
+            return 1
 
     def login(self, target: Target, login_args: list[str], *, relogin: bool = False) -> int:
         if not relogin:
@@ -205,6 +254,12 @@ class CodexRunner:
         if codex_home:
             os.makedirs(codex_home, exist_ok=True)
         return env
+
+    def runtime_lock_path(self) -> Path:
+        return self.config.shared_codex_home_path() / RUNTIME_LOCK_FILENAME
+
+    def _acquire_runtime_lock(self, target_name: str) -> SharedHomeSessionLock:
+        return SharedHomeSessionLock(self.config.shared_codex_home_path(), target_name)
 
     def _spawn_interactive(self, command: list[str], env: dict[str, str]) -> InteractiveResult:
         if self._should_use_script():

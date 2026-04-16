@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.2]
+
+### Changed
+
+- Rewrote the README around the actual install, setup, shim, and troubleshooting flow.
+- Added active-auth metadata in the shared home so `doctor` can report which target last populated shared auth.
+- Made `doctor` treat an installed-but-inactive shim as a real configuration issue.
+
+### Fixed
+
+- Prevented concurrent wrapped sessions from mutating the same shared `CODEX_HOME` at the same time by adding a shared-home runtime lock.
+
 ## [0.2.1]
 
 ### Changed

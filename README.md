@@ -1,37 +1,43 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.2.2-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
-Use multiple Codex accounts in the terminal without breaking your normal repo history or `/resume` flow.
+`codex-hotswap` lets you keep using Codex in the terminal with your normal repo history and `/resume`, while automatically swapping to another logged-in account when the current one hits a limit.
 
-## What It Does
+## Why This Exists
 
-`codex-hotswap` keeps one shared Codex home for normal work and `/resume`, then swaps the active account auth underneath when a limit hits.
+Heavy Codex users hit an annoying problem:
 
-That means:
+- you are deep in a repo
+- your current account hits a usage limit
+- you stop working
+- you manually switch accounts
+- you try to recover the session
 
-- your chats stay organized per repo
-- `/resume` still shows the right sessions for the current directory
-- each account only needs to be logged in once
-- when one account hits a limit, it rotates to the next configured account
+`codex-hotswap` turns that into:
 
-## The Mental Model
+- log each account in once
+- keep one shared `~/.codex` for normal history and `/resume`
+- swap only the active auth when a limit banner appears
+- continue with `codex resume --last`
 
-There are two kinds of storage:
+## How It Works
 
-- shared Codex home: `~/.codex`
+There are two storage layers:
+
+- shared runtime home: `~/.codex`
 - per-account auth vaults: `~/.codex-acc1`, `~/.codex-acc2`, and so on
 
-The shared home holds the session/history data that makes `/resume` work normally.
+The shared home keeps the normal Codex session history, so `/resume` stays organized by repo the same way Codex already does.
 
-The per-account vaults hold only the auth data for each account.
+Each auth vault stores a separate account login. When `codex-hotswap` launches Codex, it copies the selected account's `auth.json` into the shared home first, then runs Codex normally in your current directory.
 
-When `codex-hot` starts, it copies the chosen account's auth into the shared home, then launches Codex as usual.
+If Codex emits a matched usage-limit or rate-limit failure, `codex-hotswap`:
 
-When a matched usage-limit or rate-limit failure appears, it copies the next account's auth into the shared home and resumes.
-
-If you used an older per-account-only version of this tool, those old session stores stay in the vaults; the new shared-home flow uses `~/.codex` going forward.
+1. marks that account exhausted
+2. activates the next account's auth
+3. runs `codex resume --last`
 
 ## Quick Start
 
@@ -44,14 +50,14 @@ codex-hotswap use acc1
 codex
 ```
 
-`setup --login --install-shim` is the shortest path. It creates the targets, walks through each account login, and installs the optional `codex` shim. Each account login still needs its own interactive browser auth.
+What that does:
 
-After that, keep working in your repo the normal way:
+- installs `codex-hotswap`
+- creates four auth vault targets
+- walks you through login for each account
+- installs an optional `codex` shim so your normal command stays `codex`
 
-```bash
-cd ~/tonr
-codex
-```
+Each account login is still interactive. The setup is one command to orchestrate everything, not one command to silently authenticate four accounts.
 
 ## Install
 
@@ -60,11 +66,6 @@ Recommended:
 ```bash
 pipx install git+https://github.com/tanayyo1/codex-hotswap.git
 ```
-
-This installs:
-
-- `codex-hotswap`
-- `codex-hot`
 
 If `pipx` is missing on Ubuntu or Debian:
 
@@ -76,41 +77,14 @@ pipx ensurepath
 
 Restart your shell after `pipx ensurepath`, then install again.
 
-### Optional: Make `codex` Go Through Hotswap
+Installed commands:
 
-If you want plain `codex` to route through `codex-hotswap` automatically:
-
-```bash
-codex-hotswap install-shim
-```
-
-That installs a small shim at `~/.local/bin/codex` so normal terminal usage keeps working, but account failover still happens underneath.
+- `codex-hotswap`
+- `codex-hot`
 
 ## Setup
 
-### Named Accounts
-
-```bash
-codex-hotswap setup --force --accounts main,work,backup,extra
-```
-
-This creates auth vaults like:
-
-- `main` -> `~/.codex-main`
-- `work` -> `~/.codex-work`
-- `backup` -> `~/.codex-backup`
-- `extra` -> `~/.codex-extra`
-
-Then log in once to each one:
-
-```bash
-codex-hotswap login main
-codex-hotswap login work
-codex-hotswap login backup
-codex-hotswap login extra
-```
-
-### Numbered Accounts
+### Fastest Path
 
 ```bash
 codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
@@ -123,8 +97,33 @@ This creates:
 - `acc3` -> `~/.codex-acc3`
 - `acc4` -> `~/.codex-acc4`
 
+If you want named accounts instead:
+
+```bash
+codex-hotswap setup --force --accounts main,work,backup,extra --login --install-shim
+```
+
+For headless or remote login flows:
+
+```bash
+codex-hotswap setup --force --count 4 --prefix acc --login --device-auth --install-shim
+```
+
 If you rerun `setup` with the same names, the generated targets are updated instead of failing on duplicates.
-If you do not want the shim, drop `--install-shim`.
+
+### What `login` Does
+
+```bash
+codex-hotswap login acc2
+```
+
+is effectively:
+
+```bash
+CODEX_HOME=~/.codex-acc2 codex login
+```
+
+If a target already appears logged in, `codex-hotswap login <target>` skips the browser flow unless you pass `--relogin`.
 
 ## Daily Use
 
@@ -137,44 +136,48 @@ codex-hotswap use acc1
 Then work normally:
 
 ```bash
+cd ~/tonr
 codex
 ```
 
-If you did not install the shim, use `codex-hot` instead.
+If you did not install the shim, use:
+
+```bash
+codex-hot
+```
 
 Examples:
 
 ```bash
-codex-hot "fix the failing tests"
+codex "fix the failing tests"
 codex-hot --search
 ```
 
-## What `login` Does
+## The `codex` Shim
+
+The shim is a tiny script placed at `~/.local/bin/codex`.
+
+Its only job is to make this:
 
 ```bash
-codex-hotswap login acc2
+codex
 ```
 
-is effectively:
+run through `codex-hotswap` automatically.
+
+Install it:
 
 ```bash
-CODEX_HOME=~/.codex-acc2 codex login
+codex-hotswap install-shim
 ```
 
-That stores the auth for `acc2` in its own vault.
+Remove it:
 
-If the target is already logged in, `codex-hotswap login <target>` skips the browser flow unless you pass `--relogin`.
+```bash
+codex-hotswap uninstall-shim
+```
 
-## What `codex-hot` Does
-
-When you run `codex-hot`:
-
-1. the selected account auth is copied into the shared `~/.codex`
-2. Codex launches normally in the current repo
-3. if a matched usage-limit or rate-limit style failure appears, that account is marked exhausted
-4. the wrapper rotates to the next configured account
-5. the next account auth is copied into the shared home
-6. `codex resume --last` is attempted
+If `codex-hotswap doctor` says the shim is installed but not active on `PATH`, your shell is still finding some other `codex` binary first.
 
 ## Useful Commands
 
@@ -185,6 +188,7 @@ codex-hotswap list
 codex-hotswap current
 codex-hotswap use <target>
 codex-hotswap next
+codex-hotswap login <target>
 codex-hotswap install-shim
 codex-hotswap uninstall-shim
 codex-hotswap reset
@@ -204,11 +208,11 @@ sudo apt install -y pipx
 pipx ensurepath
 ```
 
-Restart your shell and install again.
+Restart your shell, then install again.
 
 ### `codex-hotswap: Config file not found`
 
-Create a config first:
+Create it first:
 
 ```bash
 codex-hotswap setup --force --count 4 --prefix acc
@@ -220,61 +224,73 @@ or:
 codex-hotswap init
 ```
 
-### Verify the whole setup
-
-Run:
+### Check Everything
 
 ```bash
 codex-hotswap doctor
 ```
 
-That checks the shared home, current target, each auth vault, and the optional shim.
+`doctor` checks:
 
-### Login did not finish
+- shared `~/.codex`
+- shared `auth.json`
+- current target
+- each auth vault
+- each target's login status
+- shim presence and whether it is the `codex` currently found on `PATH`
+- whether the shared runtime lock is idle or busy
 
-Rerun the login:
-
-```bash
-codex-hotswap login acc3
-```
-
-### It is not switching automatically
+### It Is Not Swapping Automatically
 
 Check:
 
-- you are using `codex-hot`
-- each account was logged in successfully
-- the account order is correct in `codex-hotswap status`
+- you are using `codex` through the shim or `codex-hot`
+- each account really logged in successfully
+- the target order in `codex-hotswap status`
 - not all accounts are already exhausted
 
-The live detector is conservative on purpose. If Codex changes its failure banner, the detector may need an update before it swaps automatically.
+The live detector is conservative on purpose. If Codex changes its failure banner, `codex-hotswap` may need an update before automatic rotation works again.
 
-### Resume did not continue where expected
+### `/resume` Looks Wrong
 
-`codex-hotswap` uses:
+Make sure you are starting through `codex-hotswap`, not a separate unmanaged `codex` flow using some other `CODEX_HOME`.
+
+The intended shared-history model is:
+
+- one shared `~/.codex` for runtime history
+- one auth vault per account
+
+Run from the repo you care about:
 
 ```bash
-codex resume --last
+cd ~/your-repo
+codex
 ```
 
-So resume behavior still depends on Codex itself.
+### Another Wrapped Session Is Already Running
 
-Run `codex-hot` from the repo where you want `/resume` to keep working.
+`codex-hotswap` now locks the shared `~/.codex` while a wrapped session is active.
+
+That is intentional. The active auth inside the shared home is mutable, so running two wrapped sessions against the same shared home at once is unsafe.
+
+If you need parallel wrapped sessions, use separate configs with separate `shared_codex_home` values.
 
 ## Guarantees And Limits
 
 What it does well:
 
-- keeps repo/session history in a shared Codex home
+- keeps normal repo/session history in a shared Codex home
+- preserves the usual `/resume` workflow by repo
 - isolates multiple account logins
 - swaps account auth without changing your workspace
-- resumes with `codex resume --last`
+- checks setup health with `doctor`
 
 What it does not guarantee:
 
-- perfect detection of every future failure message
-- a real usage meter from Codex
+- perfect detection of every future Codex failure banner
+- a real upstream usage meter from Codex
 - perfect resume behavior if Codex changes its session internals
+- concurrent wrapped sessions against the same shared home
 
 ## Commands
 
@@ -292,7 +308,11 @@ codex-hotswap use <target>
 codex-hotswap next
 codex-hotswap exhaust <target> [--reason <text>] [--cooldown-minutes <n>]
 codex-hotswap reset [target]
+codex-hotswap install-shim
+codex-hotswap uninstall-shim
+codex-hotswap doctor
 codex-hotswap run [codex args...]
+codex-hot [codex args...]
 ```
 
 ## Development

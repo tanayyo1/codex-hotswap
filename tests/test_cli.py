@@ -375,3 +375,54 @@ codex_home = "{vault}"
     output = capsys.readouterr().out
     assert "doctor status: issues found" in output
     assert "shared auth.json is missing" in output
+
+
+def test_doctor_reports_inactive_shim_on_path(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    shared_home = tmp_path / "shared"
+    shared_home.mkdir()
+    (shared_home / "auth.json").write_text("{}")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "auth.json").write_text("{}")
+    shim_path = tmp_path / "bin" / "codex"
+    shim_path.parent.mkdir(parents=True)
+    shim_path.write_text(
+        "#!/usr/bin/env bash\n"
+        "# codex-hotswap shim\n"
+        'export CODEX_HOTSWAP_REAL_BIN="/usr/bin/codex"\n'
+        'exec codex-hot "$@"\n'
+    )
+    config_path.write_text(
+        f"""version = 1
+
+[settings]
+shared_codex_home = "{shared_home}"
+
+[[targets]]
+name = "acc1"
+codex_home = "{vault}"
+"""
+    )
+
+    monkeypatch.setattr("codex_hotswap.cli.shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.setattr("codex_hotswap.cli.CodexRunner.login_status", lambda self, target: (True, "Logged in using ChatGPT"))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "doctor",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--shim-path",
+            str(shim_path),
+        ],
+    )
+
+    assert main() == 1
+    output = capsys.readouterr().out
+    assert "shim active on PATH: no" in output
+    assert "doctor status: issues found" in output

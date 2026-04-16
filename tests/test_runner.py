@@ -148,3 +148,24 @@ def test_codex_binary_peels_back_to_real_binary_from_shim(tmp_path: Path, monkey
     monkeypatch.setattr("codex_hotswap.runner.shutil.which", lambda name: str(shim) if name == "codex" else None)
 
     assert runner.codex_binary() == str(real)
+
+
+def test_run_returns_error_when_shared_home_lock_is_busy(monkeypatch, tmp_path: Path, capsys) -> None:
+    runner = build_runner(tmp_path)
+    lock = runner.runtime_lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock.open("a+", encoding="utf-8")
+
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        exit_code = runner.run([])
+    finally:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+    assert exit_code == 1
+    assert "another codex-hotswap session is already using the shared CODEX_HOME" in capsys.readouterr().out
