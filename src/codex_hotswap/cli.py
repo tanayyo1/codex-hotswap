@@ -295,11 +295,10 @@ def main() -> int:
 
 
 def _run_wrapper(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="codex-hot")
+    parser = argparse.ArgumentParser(prog="codex-hot", add_help=False, allow_abbrev=False)
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to config.toml")
     parser.add_argument("--state-path", type=Path, default=DEFAULT_STATE_PATH, help="Path to state.json")
-    parser.add_argument("args", nargs=argparse.REMAINDER)
-    parsed = parser.parse_args(argv)
+    parsed, remainder = parser.parse_known_args(argv)
 
     try:
         config = load_config(parsed.config_path)
@@ -308,7 +307,7 @@ def _run_wrapper(argv: list[str]) -> int:
         return 1
 
     runner = CodexRunner(config=config, state_store=StateStore(parsed.state_path))
-    return runner.run(_normalize_remainder(parsed.args))
+    return runner.run(_normalize_remainder(remainder))
 
 
 def _normalize_remainder(values: list[str]) -> list[str]:

@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.3]
+
+### Fixed
+
+- Forwarded unknown top-level shim arguments like `codex --version` to the real Codex CLI instead of rejecting them in the wrapper parser.
+- Isolated doctor tests from machine-specific shim state.
+
 ## [0.2.2]
 
 ### Changed

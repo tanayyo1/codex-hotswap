@@ -166,6 +166,43 @@ def test_setup_can_login_and_install_shim_in_one_command(tmp_path: Path, monkeyp
     assert 'shared_codex_home = "~/.codex"' in config_path.read_text()
 
 
+def test_codex_hot_passthrough_preserves_unknown_codex_flags(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    config_path.write_text(
+        """version = 1
+
+[settings]
+shared_codex_home = "~/.codex"
+
+[[targets]]
+name = "acc1"
+codex_home = "~/.codex-acc1"
+"""
+    )
+    received: list[str] = []
+
+    def fake_run(self, user_args):
+        received.extend(user_args)
+        return 0
+
+    monkeypatch.setattr("codex_hotswap.cli.CodexRunner.run", fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hot",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--version",
+        ],
+    )
+
+    assert main() == 0
+    assert received == ["--version"]
+
+
 def test_setup_rejects_login_arg_without_login(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.toml"
     state_path = tmp_path / "state.json"
@@ -301,6 +338,7 @@ def test_doctor_reports_ok(tmp_path: Path, monkeypatch, capsys) -> None:
     config_path = tmp_path / "config.toml"
     state_path = tmp_path / "state.json"
     shared_home = tmp_path / "shared"
+    shim_path = tmp_path / "bin" / "codex"
     shared_home.mkdir()
     (shared_home / "auth.json").write_text("{}")
     vault = tmp_path / "vault"
@@ -329,6 +367,8 @@ codex_home = "{vault}"
             str(config_path),
             "--state-path",
             str(state_path),
+            "--shim-path",
+            str(shim_path),
         ],
     )
 
