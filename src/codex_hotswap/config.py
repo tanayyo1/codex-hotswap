@@ -16,6 +16,7 @@ class ConfigError(ValueError):
 @dataclass(slots=True)
 class Target:
     name: str
+    codex_home: str | None = None
     profile: str | None = None
     model: str | None = None
     oss: bool = False
@@ -39,6 +40,12 @@ class Target:
             args += ["--config", value]
         args.extend(self.extra_args)
         return args
+
+    def env_overrides(self) -> dict[str, str]:
+        env: dict[str, str] = {}
+        if self.codex_home:
+            env["CODEX_HOME"] = self.codex_home
+        return env
 
 
 @dataclass(slots=True)
@@ -98,13 +105,15 @@ swap_delay_seconds = 1.5
 
 [[targets]]
 name = "primary"
+codex_home = "~/.codex-primary"
 profile = "default"
-note = "Your primary Codex profile"
+note = "Your primary Codex account"
 
 [[targets]]
 name = "backup"
-profile = "backup"
-note = "A second Codex profile or provider"
+codex_home = "~/.codex-backup"
+profile = "default"
+note = "A backup Codex account"
 """
     )
     return path
@@ -135,6 +144,7 @@ def _load_target(raw: Any, seen_names: set[str]) -> Target:
     seen_names.add(name)
 
     profile = _optional_string(raw, "profile")
+    codex_home = _optional_string(raw, "codex_home")
     model = _optional_string(raw, "model")
     local_provider = _optional_string(raw, "local_provider")
     note = _optional_string(raw, "note")
@@ -150,6 +160,7 @@ def _load_target(raw: Any, seen_names: set[str]) -> Target:
 
     return Target(
         name=name,
+        codex_home=codex_home,
         profile=profile,
         model=model,
         oss=oss,
@@ -182,4 +193,3 @@ def _validate_unique_names(targets: list[Target]) -> None:
         if target.name in seen:
             raise ConfigError(f"Duplicate target name: {target.name}")
         seen.add(target.name)
-

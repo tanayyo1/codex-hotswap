@@ -4,6 +4,7 @@ Automatically rotate between Codex launch targets when a run hits a rate limit, 
 
 `codex-hotswap` is inspired by the hotswap workflow people use with Claude Code, but it is implemented for the Codex CLI and its actual constraints. The first version focuses on:
 
+- isolated Codex accounts via `CODEX_HOME`
 - explicit target rotation
 - safe local state
 - wrapper-level trigger detection
@@ -56,12 +57,21 @@ swap_delay_seconds = 1.5
 
 [[targets]]
 name = "primary"
+codex_home = "~/.codex-primary"
 profile = "default"
 
 [[targets]]
 name = "backup"
-profile = "work"
+codex_home = "~/.codex-backup"
+profile = "default"
 model = "gpt-5.4"
+```
+
+Log each account into its own Codex home once:
+
+```bash
+CODEX_HOME=~/.codex-primary codex login
+CODEX_HOME=~/.codex-backup codex login
 ```
 
 Run Codex through the wrapper:
@@ -99,6 +109,7 @@ codex-hotswap run [codex args...]
 
 Each target represents a way to launch `codex`. The current implementation supports:
 
+- `codex_home`
 - `profile`
 - `model`
 - `oss`
@@ -108,10 +119,13 @@ Each target represents a way to launch `codex`. The current implementation suppo
 
 This means you can rotate between:
 
+- different logged-in Codex accounts
 - different Codex profiles
 - hosted and local OSS providers
 - models with different quotas
 - custom config overrides
+
+`codex_home` is the account-isolation mechanism. Each target can point at a different Codex home directory with its own login state, config, and local session data.
 
 ## Detection
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import errno
 import os
 import pty
 import time
@@ -57,17 +58,12 @@ class CodexRunner:
             current_args = ["resume", "--last"]
 
     def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
-        command = ["codex", *target.codex_args(), *user_args]
+        command = self.build_command(target, user_args)
+        env = self.build_env(target)
         print(f"codex-hotswap: using target '{target.name}'")
-        output = bytearray()
-
-        def read(fd: int) -> bytes:
-            data = os.read(fd, 1024)
-            output.extend(data)
-            return data
-
-        status = pty.spawn(command, master_read=read)
-        exit_code = os.waitstatus_to_exitcode(status)
+        if target.codex_home:
+            print(f"codex-hotswap: CODEX_HOME={target.codex_home}")
+        output, exit_code = self._spawn_pty(command, env)
         decoded_output = output.decode("utf-8", errors="replace")
         detection = self.detector.detect(decoded_output)
         return RunOutcome(
@@ -75,6 +71,38 @@ class CodexRunner:
             triggered=exit_code != 0 and detection.triggered,
             trigger_pattern=detection.pattern,
         )
+
+    def build_command(self, target: Target, user_args: list[str]) -> list[str]:
+        return ["codex", *target.codex_args(), *user_args]
+
+    def build_env(self, target: Target) -> dict[str, str]:
+        env = os.environ.copy()
+        env.update(target.env_overrides())
+        return env
+
+    def _spawn_pty(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:
+        output = bytearray()
+        pid, master_fd = pty.fork()
+        if pid == 0:
+            os.execvpe(command[0], command, env)
+
+        try:
+            while True:
+                try:
+                    data = os.read(master_fd, 1024)
+                    if not data:
+                        break
+                    output.extend(data)
+                    os.write(1, data)
+                except OSError as exc:
+                    if exc.errno == errno.EIO:
+                        break
+                    raise
+        finally:
+            os.close(master_fd)
+
+        _, status = os.waitpid(pid, 0)
+        return output, os.waitstatus_to_exitcode(status)
 
 
 def format_target_line(config: Config, state_store: StateStore, target_name: str) -> str:
@@ -86,6 +114,8 @@ def format_target_line(config: Config, state_store: StateStore, target_name: str
     if exhausted:
         suffix = f" [exhausted: {exhausted.reason}]"
     target = config.get_target(target_name)
+    if target.codex_home:
+        suffix += f" [CODEX_HOME={target.codex_home}]"
     if not target.active:
         suffix += " [inactive]"
     return f"{marker} {target_name}{suffix}"

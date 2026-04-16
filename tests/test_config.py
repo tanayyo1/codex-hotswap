@@ -16,6 +16,7 @@ swap_delay_seconds = 2
 
 [[targets]]
 name = "primary"
+codex_home = "~/.codex-primary"
 profile = "default"
 model = "gpt-5.4"
 oss = true
@@ -27,6 +28,7 @@ extra_args = ["--search"]
 
     config = load_config(path)
     assert config.settings.max_swaps == 4
+    assert config.targets[0].env_overrides() == {"CODEX_HOME": "~/.codex-primary"}
     assert config.targets[0].codex_args() == [
         "--profile",
         "default",
@@ -62,3 +64,12 @@ name = "same"
     with pytest.raises(ConfigError, match="Duplicate target name"):
         load_config(path)
 
+
+def test_write_default_config_contains_codex_home(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    from codex_hotswap.config import write_default_config
+
+    write_default_config(path)
+
+    text = path.read_text()
+    assert 'codex_home = "~/.codex-primary"' in text
