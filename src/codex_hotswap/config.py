@@ -76,6 +76,19 @@ class Config:
     def active_targets(self) -> list[Target]:
         return [target for target in self.targets if target.active]
 
+    def without_target(self, name: str) -> "Config":
+        remaining = [target for target in self.targets if target.name != name]
+        if len(remaining) == len(self.targets):
+            raise ConfigError(f"Unknown target: {name}")
+        if not any(target.active for target in remaining):
+            raise ConfigError("Config must define at least one active target")
+        return Config(path=self.path, settings=self.settings, targets=remaining)
+
+    def with_added_target(self, target: Target) -> "Config":
+        if any(existing.name == target.name for existing in self.targets):
+            raise ConfigError(f"Duplicate target name: {target.name}")
+        return Config(path=self.path, settings=self.settings, targets=[*self.targets, target])
+
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
     if not path.exists():
@@ -103,28 +116,34 @@ def write_default_config(path: Path = DEFAULT_CONFIG_PATH, force: bool = False) 
         raise ConfigError(f"Config already exists: {path}")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        """version = 1
-
-[settings]
-max_swaps = 3
-swap_delay_seconds = 1.5
-default_cooldown_minutes = 240
-
-[[targets]]
-name = "primary"
-codex_home = "~/.codex-primary"
-profile = "default"
-note = "Your primary Codex account"
-
-[[targets]]
-name = "backup"
-codex_home = "~/.codex-backup"
-profile = "default"
-note = "A backup Codex account"
-"""
+    config = Config(
+        path=path,
+        settings=Settings(max_swaps=3, swap_delay_seconds=1.5, default_cooldown_minutes=240),
+        targets=[
+            Target(name="primary", codex_home="~/.codex-primary", profile="default", note="Your primary Codex account"),
+            Target(name="backup", codex_home="~/.codex-backup", profile="default", note="A backup Codex account"),
+        ],
     )
+    save_config(config, path)
     return path
+
+
+def save_config(config: Config, path: Path | None = None) -> Path:
+    output_path = path or config.path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_config(config))
+    return output_path
+
+
+def render_config(config: Config) -> str:
+    lines = ["version = 1", ""]
+    lines.extend(_render_settings(config.settings))
+    lines.append("")
+    for index, target in enumerate(config.targets):
+        if index > 0:
+            lines.append("")
+        lines.extend(_render_target(target))
+    return "\n".join(lines) + "\n"
 
 
 def _load_settings(raw: Any) -> Settings:
@@ -208,3 +227,53 @@ def _validate_unique_names(targets: list[Target]) -> None:
         if target.name in seen:
             raise ConfigError(f"Duplicate target name: {target.name}")
         seen.add(target.name)
+
+
+def _render_settings(settings: Settings) -> list[str]:
+    lines = [
+        "[settings]",
+        f"max_swaps = {settings.max_swaps}",
+        f"swap_delay_seconds = {_format_scalar(settings.swap_delay_seconds)}",
+    ]
+    if settings.default_cooldown_minutes is not None:
+        lines.append(f"default_cooldown_minutes = {settings.default_cooldown_minutes}")
+    return lines
+
+
+def _render_target(target: Target) -> list[str]:
+    lines = ["[[targets]]", f'name = "{_escape_string(target.name)}"']
+    if target.codex_home is not None:
+        lines.append(f'codex_home = "{_escape_string(target.codex_home)}"')
+    if target.profile is not None:
+        lines.append(f'profile = "{_escape_string(target.profile)}"')
+    if target.model is not None:
+        lines.append(f'model = "{_escape_string(target.model)}"')
+    if target.oss:
+        lines.append("oss = true")
+    if target.local_provider is not None:
+        lines.append(f'local_provider = "{_escape_string(target.local_provider)}"')
+    if target.config_overrides:
+        lines.append(f"config_overrides = [{', '.join(_format_string(item) for item in target.config_overrides)}]")
+    if target.extra_args:
+        lines.append(f"extra_args = [{', '.join(_format_string(item) for item in target.extra_args)}]")
+    if not target.active:
+        lines.append("active = false")
+    if target.note is not None:
+        lines.append(f'note = "{_escape_string(target.note)}"')
+    return lines
+
+
+def _format_scalar(value: int | float) -> str:
+    if isinstance(value, int):
+        return str(value)
+    if value.is_integer():
+        return f"{value:.1f}"
+    return str(value)
+
+
+def _format_string(value: str) -> str:
+    return f'"{_escape_string(value)}"'
+
+
+def _escape_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')

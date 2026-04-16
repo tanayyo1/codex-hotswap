@@ -72,6 +72,8 @@ This provides:
 - `codex-hotswap` for setup and management
 - `codex-hot` as the wrapper you run instead of `codex`
 
+You can manage targets either by editing `config.toml` directly or by using the built-in target commands.
+
 ## Quick Start
 
 ### 1. Create a config
@@ -109,6 +111,13 @@ name = "backup"
 codex_home = "~/.codex-backup"
 profile = "default"
 note = "Backup Codex account"
+```
+
+Or add targets from the CLI:
+
+```bash
+codex-hotswap add-target work --codex-home ~/.codex-work --profile default --note "Work account"
+codex-hotswap add-target backup --codex-home ~/.codex-backup --profile default --note "Backup account"
 ```
 
 ### 3. Log into each target once
@@ -188,6 +197,8 @@ codex-hot
 ```bash
 codex-hotswap init
 codex-hotswap login <target> [-- <codex login args...>]
+codex-hotswap add-target <name> [options]
+codex-hotswap remove-target <target>
 codex-hotswap status
 codex-hotswap list
 codex-hotswap current

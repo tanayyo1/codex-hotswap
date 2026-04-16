@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse
 import sys
 
-from .config import ConfigError, DEFAULT_CONFIG_PATH, load_config, write_default_config
+from .config import ConfigError, DEFAULT_CONFIG_PATH, Target, load_config, save_config, write_default_config
 from .runner import CodexRunner, format_target_line
 from .state import DEFAULT_STATE_PATH, StateStore
 
@@ -30,6 +30,21 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     login_parser = subparsers.add_parser("login", help="Run codex login for a target", parents=[common])
     login_parser.add_argument("target")
     login_parser.add_argument("args", nargs=argparse.REMAINDER)
+
+    add_target_parser = subparsers.add_parser("add-target", help="Add a target to config", parents=[common])
+    add_target_parser.add_argument("name")
+    add_target_parser.add_argument("--codex-home")
+    add_target_parser.add_argument("--profile")
+    add_target_parser.add_argument("--model")
+    add_target_parser.add_argument("--oss", action="store_true")
+    add_target_parser.add_argument("--local-provider")
+    add_target_parser.add_argument("--config-override", action="append", default=[])
+    add_target_parser.add_argument("--extra-arg", action="append", default=[])
+    add_target_parser.add_argument("--inactive", action="store_true")
+    add_target_parser.add_argument("--note")
+
+    remove_target_parser = subparsers.add_parser("remove-target", help="Remove a target from config", parents=[common])
+    remove_target_parser.add_argument("target")
 
     use_parser = subparsers.add_parser("use", help="Set the active target", parents=[common])
     use_parser.add_argument("target")
@@ -94,6 +109,30 @@ def main() -> int:
         target = config.get_target(args.target)
         runner = CodexRunner(config=config, state_store=state_store)
         return runner.login(target, _normalize_remainder(args.args))
+
+    if args.command == "add-target":
+        target = Target(
+            name=args.name,
+            codex_home=args.codex_home,
+            profile=args.profile,
+            model=args.model,
+            oss=args.oss,
+            local_provider=args.local_provider,
+            config_overrides=args.config_override,
+            extra_args=args.extra_arg,
+            active=not args.inactive,
+            note=args.note,
+        )
+        updated = config.with_added_target(target)
+        save_config(updated, args.config_path)
+        print(args.name)
+        return 0
+
+    if args.command == "remove-target":
+        updated = config.without_target(args.target)
+        save_config(updated, args.config_path)
+        print(args.target)
+        return 0
 
     if args.command == "use":
         target = config.get_target(args.target)
