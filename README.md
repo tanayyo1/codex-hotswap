@@ -87,6 +87,42 @@ You can manage targets either by editing `config.toml` directly or by using the 
 
 ## Quick Start
 
+### Fastest Setup For Multiple Accounts
+
+If you already know you want several Codex accounts, use the setup command:
+
+```bash
+codex-hotswap setup --force --accounts main,work,backup,extra
+codex-hotswap login main
+codex-hotswap login work
+codex-hotswap login backup
+codex-hotswap login extra
+codex-hotswap use main
+codex-hot
+```
+
+That creates targets like:
+
+- `main` -> `~/.codex-main`
+- `work` -> `~/.codex-work`
+- `backup` -> `~/.codex-backup`
+- `extra` -> `~/.codex-extra`
+
+You can also generate numbered targets automatically:
+
+```bash
+codex-hotswap setup --force --count 4 --prefix acc
+```
+
+That creates:
+
+- `acc1`
+- `acc2`
+- `acc3`
+- `acc4`
+
+### Manual Setup
+
 ### 1. Create a config
 
 ```bash
@@ -207,6 +243,7 @@ codex-hot
 
 ```bash
 codex-hotswap init
+codex-hotswap setup --force --accounts main,work,backup
 codex-hotswap login <target> [-- <codex login args...>]
 codex-hotswap add-target <name> [options]
 codex-hotswap remove-target <target>

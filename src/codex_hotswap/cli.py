@@ -5,7 +5,7 @@ import argparse
 import sys
 
 from . import __version__
-from .config import ConfigError, DEFAULT_CONFIG_PATH, Target, load_config, save_config, write_default_config
+from .config import Config, ConfigError, DEFAULT_CONFIG_PATH, Settings, Target, load_config, save_config, write_default_config
 from .runner import CodexRunner, format_target_line
 from .state import DEFAULT_STATE_PATH, StateStore
 
@@ -24,6 +24,19 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init", help="Write a starter config", parents=[common])
     init_parser.add_argument("--force", action="store_true", help="Overwrite an existing config")
+
+    setup_parser = subparsers.add_parser("setup", help="Bootstrap a multi-account config", parents=[common])
+    setup_parser.add_argument("--accounts", help="Comma-separated target names, e.g. main,work,backup")
+    setup_parser.add_argument("--count", type=int, help="Create numbered targets when --accounts is not provided")
+    setup_parser.add_argument("--prefix", default="acc", help="Name prefix for generated targets with --count")
+    setup_parser.add_argument("--codex-home-prefix", default="~/.codex-", help="Prefix used to generate CODEX_HOME paths")
+    setup_parser.add_argument("--profile", default="default", help="Profile to assign to generated targets")
+    setup_parser.add_argument("--max-swaps", type=int, default=3, help="max_swaps setting for generated config")
+    setup_parser.add_argument("--swap-delay-seconds", type=float, default=1.5, help="swap_delay_seconds setting")
+    setup_parser.add_argument("--cooldown-minutes", type=int, default=240, help="default_cooldown_minutes setting")
+    setup_parser.add_argument("--replace-targets", action="store_true", help="Replace existing targets instead of appending")
+    setup_parser.add_argument("--login", action="store_true", help="Run codex login for each created target after setup")
+    setup_parser.add_argument("--force", action="store_true", help="Allow creating config if missing and replacing generated setup safely")
 
     subparsers.add_parser("list", help="List configured targets", parents=[common])
     subparsers.add_parser("status", help="Show configured targets and current state", parents=[common])
@@ -87,6 +100,44 @@ def main() -> int:
             return 1
         print(path)
         return 0
+
+    if args.command == "setup":
+        try:
+            target_names = _resolve_setup_target_names(args.accounts, args.count, args.prefix)
+            config = _load_or_create_setup_config(
+                args.config_path,
+                max_swaps=args.max_swaps,
+                swap_delay_seconds=args.swap_delay_seconds,
+                cooldown_minutes=args.cooldown_minutes,
+                force=args.force,
+            )
+            generated_targets = _build_setup_targets(
+                target_names=target_names,
+                codex_home_prefix=args.codex_home_prefix,
+                profile=args.profile,
+            )
+            config = _merge_setup_targets(config, generated_targets, replace_targets=args.replace_targets)
+            save_config(config, args.config_path)
+
+            state_store = StateStore(args.state_path)
+            state = state_store.load()
+            state_store.set_current_target(state, generated_targets[0].name)
+
+            print(f"codex-hotswap: configured {len(generated_targets)} target(s) in {args.config_path}")
+            print(f"codex-hotswap: current target set to {generated_targets[0].name}")
+            for target in generated_targets:
+                print(f"  - {target.name} -> {target.codex_home}")
+
+            if args.login:
+                runner = CodexRunner(config=config, state_store=state_store)
+                for target in generated_targets:
+                    exit_code = runner.login(target, [])
+                    if exit_code != 0:
+                        return exit_code
+            return 0
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}", file=sys.stderr)
+            return 1
 
     try:
         config = load_config(args.config_path)
@@ -197,6 +248,77 @@ def _normalize_remainder(values: list[str]) -> list[str]:
     if values and values[0] == "--":
         return values[1:]
     return values
+
+
+def _resolve_setup_target_names(accounts: str | None, count: int | None, prefix: str) -> list[str]:
+    if accounts:
+        names = [item.strip() for item in accounts.split(",") if item.strip()]
+        if not names:
+            raise ConfigError("--accounts must include at least one name")
+        if len(set(names)) != len(names):
+            raise ConfigError("--accounts contains duplicate target names")
+        return names
+
+    resolved_count = count or 2
+    if resolved_count < 1:
+        raise ConfigError("--count must be a positive integer")
+    if not prefix.strip():
+        raise ConfigError("--prefix must be a non-empty string")
+    return [f"{prefix}{index}" for index in range(1, resolved_count + 1)]
+
+
+def _load_or_create_setup_config(
+    path: Path,
+    *,
+    max_swaps: int,
+    swap_delay_seconds: float,
+    cooldown_minutes: int,
+    force: bool,
+) -> Config:
+    if path.exists():
+        return load_config(path)
+    if not force:
+        raise ConfigError(f"Config file not found: {path}. Re-run with --force to create it.")
+    return Config(
+        path=path,
+        settings=Settings(
+            max_swaps=max_swaps,
+            swap_delay_seconds=swap_delay_seconds,
+            default_cooldown_minutes=cooldown_minutes,
+        ),
+        targets=[],
+    )
+
+
+def _build_setup_targets(
+    *,
+    target_names: list[str],
+    codex_home_prefix: str,
+    profile: str,
+) -> list[Target]:
+    if not codex_home_prefix.strip():
+        raise ConfigError("--codex-home-prefix must be a non-empty string")
+    if not profile.strip():
+        raise ConfigError("--profile must be a non-empty string")
+    return [
+        Target(
+            name=name,
+            codex_home=f"{codex_home_prefix}{name}",
+            profile=profile,
+            note=f"Configured by setup for {name}",
+        )
+        for name in target_names
+    ]
+
+
+def _merge_setup_targets(config: Config, generated_targets: list[Target], *, replace_targets: bool) -> Config:
+    if replace_targets:
+        return Config(path=config.path, settings=config.settings, targets=generated_targets)
+
+    updated = config
+    for target in generated_targets:
+        updated = updated.with_added_target(target)
+    return updated
 
 
 if __name__ == "__main__":
