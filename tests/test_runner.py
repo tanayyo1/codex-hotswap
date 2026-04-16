@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 from codex_hotswap.config import Config, Settings, Target
 from codex_hotswap.runner import CodexRunner
@@ -53,3 +54,17 @@ def test_build_env_creates_codex_home_directory(tmp_path: Path) -> None:
 
     assert env["CODEX_HOME"] == str(codex_home)
     assert codex_home.is_dir()
+
+
+def test_login_status_detects_logged_in(monkeypatch, tmp_path: Path) -> None:
+    runner = build_runner(tmp_path)
+
+    def fake_run(command, env, capture_output, text):
+        return SimpleNamespace(returncode=0, stdout="Logged in using ChatGPT\n", stderr="")
+
+    monkeypatch.setattr("codex_hotswap.runner.subprocess.run", fake_run)
+
+    logged_in, status_text = runner.login_status(runner.config.targets[0])
+
+    assert logged_in is True
+    assert "Logged in" in status_text

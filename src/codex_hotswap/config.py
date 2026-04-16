@@ -120,8 +120,8 @@ def write_default_config(path: Path = DEFAULT_CONFIG_PATH, force: bool = False) 
         path=path,
         settings=Settings(max_swaps=3, swap_delay_seconds=1.5, default_cooldown_minutes=240),
         targets=[
-            Target(name="primary", codex_home="~/.codex-primary", profile="default", note="Your primary Codex account"),
-            Target(name="backup", codex_home="~/.codex-backup", profile="default", note="A backup Codex account"),
+            Target(name="primary", codex_home="~/.codex-primary", note="Your primary Codex account"),
+            Target(name="backup", codex_home="~/.codex-backup", note="A backup Codex account"),
         ],
     )
     save_config(config, path)

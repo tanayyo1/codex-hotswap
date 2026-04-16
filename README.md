@@ -1,249 +1,343 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
-Automatically rotate between Codex launch targets when a run hits a rate limit, quota issue, or provider error, then resume the most recent session in the same working directory.
+Use multiple Codex accounts in the terminal and automatically switch to the next one when the current one hits a limit or similar failure.
 
-`codex-hotswap` is for people who use Codex in the terminal and do not want to stop working every time one account, profile, or provider hits a limit.
+## In One Sentence
 
-## What This Does
+`codex-hotswap` lets you log in to several Codex accounts once, then use `codex-hot` instead of `codex` so it can automatically move to the next account and run `codex resume --last` when needed.
 
-You configure multiple Codex targets, for example:
+## What Problem This Solves
 
-- one Codex account in `~/.codex-main`
-- another Codex account in `~/.codex-work`
-- an optional local OSS fallback
+Without this tool:
 
-Then you run:
+1. you are using Codex in the terminal
+2. one account hits a limit or provider failure
+3. your work stops
+4. you manually switch accounts
+5. you try to resume manually
 
-```bash
-codex-hot
-```
+With this tool:
 
-If the current target fails with a matched rate-limit, quota, or provider-style error, `codex-hotswap` will:
+1. you log each Codex account into its own separate folder once
+2. you run `codex-hot`
+3. if the current account fails with a matched limit/quota/provider error
+4. `codex-hotswap` switches to the next configured account
+5. it runs `codex resume --last`
 
-1. mark that target exhausted
-2. optionally put it on cooldown
-3. switch to the next available target
-4. run `codex resume --last`
+## The Core Idea
 
-So the core value is simple:
+Each Codex account is stored in its own separate `CODEX_HOME`.
 
-`keep Codex work moving in the terminal without manual account switching.`
+Example:
 
-## Who This Is For
+- account 1 -> `~/.codex-acc1`
+- account 2 -> `~/.codex-acc2`
+- account 3 -> `~/.codex-acc3`
+- account 4 -> `~/.codex-acc4`
 
-This is mainly for terminal Codex users who have one or more of:
-
-- multiple paid Codex accounts
-- multiple Codex profiles
-- different model/provider setups
-- a hosted setup plus a local OSS fallback
-
-## How It Works
-
-A `target` is one way to launch Codex.
-
-A target can include:
-
-- `codex_home` for isolated login state
-- `profile`
-- `model`
-- `oss`
-- `local_provider`
-- extra config overrides and args
-
-The most important piece for multi-account setups is `codex_home`.
-
-Each target can point to a different `CODEX_HOME`, which means each target can keep its own:
+That means each account keeps its own:
 
 - login state
 - config
-- local Codex session data
+- local Codex state
 
-That is how `codex-hotswap` supports separate logged-in accounts cleanly.
+This tool does not copy tokens between accounts.
+
+It simply launches Codex with a different `CODEX_HOME` when it needs to switch.
+
+## If You Just Want The Commands
+
+If you want 4 accounts named `acc1`, `acc2`, `acc3`, `acc4`:
+
+```bash
+pipx install git+https://github.com/tanayyo1/codex-hotswap.git
+codex-hotswap setup --force --count 4 --prefix acc
+codex-hotswap login acc1
+codex-hotswap login acc2
+codex-hotswap login acc3
+codex-hotswap login acc4
+codex-hotswap use acc1
+codex-hot
+```
+
+After that, use `codex-hot` instead of `codex`.
 
 ## Install
 
-With `pipx`:
+### Best Option: `pipx`
+
+Install globally with `pipx`:
 
 ```bash
 pipx install git+https://github.com/tanayyo1/codex-hotswap.git
 ```
 
-From a local checkout:
+This gives you two commands:
+
+- `codex-hotswap`
+- `codex-hot`
+
+### If `pipx` Is Not Installed
+
+If you see:
 
 ```bash
-pip install .
+Command 'pipx' not found
 ```
 
-This provides:
+On Ubuntu or Debian, run:
 
-- `codex-hotswap` for setup and management
-- `codex-hot` as the wrapper you run instead of `codex`
+```bash
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+```
 
-You can manage targets either by editing `config.toml` directly or by using the built-in target commands.
+Then restart your shell and install:
 
-## Quick Start
+```bash
+pipx install git+https://github.com/tanayyo1/codex-hotswap.git
+```
 
-### Fastest Setup For Multiple Accounts
+### Local Development Install
 
-If you already know you want several Codex accounts, use the setup command:
+If you are working from a clone of this repo:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+```
+
+## Easiest Setup For Most Users
+
+### Option A: Named Accounts
+
+If you want names like `main`, `work`, `backup`, `extra`:
 
 ```bash
 codex-hotswap setup --force --accounts main,work,backup,extra
-codex-hotswap login main
-codex-hotswap login work
-codex-hotswap login backup
-codex-hotswap login extra
-codex-hotswap use main
-codex-hot
 ```
 
-That creates targets like:
+This creates:
 
 - `main` -> `~/.codex-main`
 - `work` -> `~/.codex-work`
 - `backup` -> `~/.codex-backup`
 - `extra` -> `~/.codex-extra`
 
-You can also generate numbered targets automatically:
+Then log in once to each one:
+
+```bash
+codex-hotswap login main
+codex-hotswap login work
+codex-hotswap login backup
+codex-hotswap login extra
+```
+
+Pick your first account:
+
+```bash
+codex-hotswap use main
+```
+
+Start working:
+
+```bash
+codex-hot
+```
+
+### Option B: Numbered Accounts
+
+If you just want 4 simple accounts:
 
 ```bash
 codex-hotswap setup --force --count 4 --prefix acc
 ```
 
-That creates:
+This creates:
 
-- `acc1`
-- `acc2`
-- `acc3`
-- `acc4`
+- `acc1` -> `~/.codex-acc1`
+- `acc2` -> `~/.codex-acc2`
+- `acc3` -> `~/.codex-acc3`
+- `acc4` -> `~/.codex-acc4`
 
-### Manual Setup
+Then:
 
-### 1. Create a config
+```bash
+codex-hotswap login acc1
+codex-hotswap login acc2
+codex-hotswap login acc3
+codex-hotswap login acc4
+codex-hotswap use acc1
+codex-hot
+```
+
+## What `login` Actually Does
+
+This:
+
+```bash
+codex-hotswap login acc2
+```
+
+is basically:
+
+```bash
+CODEX_HOME=~/.codex-acc2 codex login
+```
+
+So each account gets logged into its own isolated Codex home.
+
+You only need to do this once per account unless the login expires or you want to re-authenticate.
+
+If a target is already logged in, `codex-hotswap login <target>` now detects that and skips reopening the login flow.
+
+## What `codex-hot` Actually Does
+
+When you run:
+
+```bash
+codex-hot
+```
+
+it does this:
+
+1. launches Codex using your current target
+2. watches the terminal output
+3. if Codex exits with a matched limit/quota/provider-style failure
+4. marks that target exhausted
+5. switches to the next available target
+6. runs `codex resume --last`
+
+Example flow:
+
+- try `acc1`
+- `acc1` hits limit
+- switch to `acc2`
+- run `codex resume --last`
+- if needed later, move to `acc3`
+- then `acc4`
+
+## Normal Daily Use
+
+After setup, your normal workflow should be:
+
+```bash
+cd /your/project
+codex-hot
+```
+
+Or:
+
+```bash
+codex-hot "fix the failing tests"
+codex-hot --search
+```
+
+Use `codex-hot` instead of raw `codex` if you want auto-switching.
+
+## Useful Commands
+
+```bash
+codex-hotswap status
+codex-hotswap list
+codex-hotswap current
+codex-hotswap use <target>
+codex-hotswap next
+codex-hotswap reset
+codex-hotswap reset <target>
+codex-hotswap exhaust <target> --reason manual --cooldown-minutes 120
+```
+
+## Troubleshooting
+
+### `pipx: command not found`
+
+On Ubuntu or Debian:
+
+```bash
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+```
+
+Restart your shell after `pipx ensurepath`.
+
+### `codex-hotswap: Config file not found`
+
+Run setup first:
+
+```bash
+codex-hotswap setup --force --count 4 --prefix acc
+```
+
+or:
 
 ```bash
 codex-hotswap init
 ```
 
-This writes:
+### `login` did not finish for an account
+
+Just rerun the login for that target:
 
 ```bash
-~/.config/codex-hotswap/config.toml
+codex-hotswap login acc3
 ```
 
-### 2. Edit the config
+### It is not switching automatically
 
-Example:
+Possible reasons:
 
-```toml
-version = 1
+- you ran `codex` instead of `codex-hot`
+- the account was never logged in
+- Codex changed its output and the failure was not matched
+- all configured targets are exhausted
 
-[settings]
-max_swaps = 3
-swap_delay_seconds = 1.5
-default_cooldown_minutes = 240
-
-[[targets]]
-name = "primary"
-codex_home = "~/.codex-primary"
-profile = "default"
-note = "Main Codex account"
-
-[[targets]]
-name = "backup"
-codex_home = "~/.codex-backup"
-profile = "default"
-note = "Backup Codex account"
-```
-
-Or add targets from the CLI:
+Check:
 
 ```bash
-codex-hotswap add-target work --codex-home ~/.codex-work --profile default --note "Work account"
-codex-hotswap add-target backup --codex-home ~/.codex-backup --profile default --note "Backup account"
+codex-hotswap status
 ```
 
-### 3. Log into each target once
+### Resume did not continue where expected
+
+`codex-hotswap` uses:
 
 ```bash
-codex-hotswap login primary
-codex-hotswap login backup
+codex resume --last
 ```
 
-You can also pass extra login flags through:
+So resume behavior depends on how Codex itself handles the latest session in that directory.
 
-```bash
-codex-hotswap login backup -- --device-auth
-```
+Run `codex-hot` from the same project directory where you want resume to work.
 
-### 4. Start using the wrapper
+## What The Tool Guarantees, And What It Does Not
 
-```bash
-codex-hot
-codex-hot "fix the failing tests"
-codex-hot --search
-```
+What it does well:
 
-### 5. Let it rotate when needed
+- isolate multiple Codex accounts with separate `CODEX_HOME`
+- automate fallback to the next configured target
+- keep the workflow terminal-native
+- resume with `codex resume --last`
 
-If a run exits non-zero and matches a swap-worthy trigger, `codex-hot` will:
+What it does not guarantee:
 
-1. mark the current target exhausted
-2. apply cooldown if configured
-3. rotate to the next available target
-4. resume with `codex resume --last`
-
-Because `resume --last` is directory-aware, recovery stays scoped to the current working tree.
-
-## Example Multi-Account Setup
-
-```toml
-version = 1
-
-[settings]
-max_swaps = 3
-swap_delay_seconds = 2
-default_cooldown_minutes = 240
-
-[[targets]]
-name = "main"
-codex_home = "~/.codex-main"
-profile = "default"
-note = "Main account"
-
-[[targets]]
-name = "work"
-codex_home = "~/.codex-work"
-profile = "default"
-note = "Second paid account"
-
-[[targets]]
-name = "oss"
-profile = "local"
-oss = true
-local_provider = "ollama"
-active = false
-note = "Optional local fallback"
-```
-
-Setup flow:
-
-```bash
-codex-hotswap login main
-codex-hotswap login work
-codex-hotswap use main
-codex-hot
-```
+- perfect detection of every possible upstream failure
+- a real usage meter from Codex
+- perfect resume behavior if Codex changes internal behavior
 
 ## Commands
 
 ```bash
 codex-hotswap init
 codex-hotswap setup --force --accounts main,work,backup
+codex-hotswap setup --force --count 4 --prefix acc
 codex-hotswap login <target> [-- <codex login args...>]
 codex-hotswap add-target <name> [options]
 codex-hotswap remove-target <target>
@@ -257,51 +351,6 @@ codex-hotswap reset [target]
 codex-hotswap run [codex args...]
 ```
 
-## Detection
-
-Codex does not expose the same stop-hook mechanism Claude Code does, so `codex-hotswap` currently detects swap-worthy failures by inspecting live terminal output from non-zero exits.
-
-The default trigger set looks for phrases like:
-
-- `rate limit`
-- `rate_limit`
-- `quota`
-- `429`
-- `capacity`
-- `too many requests`
-- `provider error`
-- `model unavailable`
-
-This is useful and practical, but it is not a perfect upstream signal.
-
-## Exhaustion Tracking
-
-`codex-hotswap` does not currently read a real usage counter from Codex.
-
-Instead, it keeps local target state:
-
-- which target is current
-- which targets are exhausted
-- when an exhausted target should become available again
-
-With `settings.default_cooldown_minutes`, exhausted targets re-enter rotation automatically after their cooldown expires. Without a cooldown, a target stays exhausted until you reset it manually.
-
-## Current Boundaries
-
-What this tool does well:
-
-- isolate multiple Codex accounts with separate `CODEX_HOME` values
-- automate fallback to the next configured target
-- keep the workflow terminal-native
-- resume with `codex resume --last`
-
-What it does not guarantee:
-
-- perfect detection of every failure mode
-- a real usage meter from Codex
-- perfect resume behavior if Codex changes internals
-- magic recovery outside the normal Codex resume model
-
 ## Development
 
 ```bash
@@ -310,16 +359,12 @@ python3 -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 python -m pytest
-```
-
-CI runs on pushes and pull requests and currently verifies:
-
-- test suite on Python `3.11`, `3.12`, and `3.13`
-- package build via `python -m build`
-
-For local packaging:
-
-```bash
-python -m pip install build
 python -m build
 ```
+
+## CI
+
+GitHub Actions currently checks:
+
+- tests on Python `3.11`, `3.12`, and `3.13`
+- package build

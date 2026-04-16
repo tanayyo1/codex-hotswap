@@ -76,6 +76,7 @@ def test_write_default_config_contains_codex_home(tmp_path: Path) -> None:
 
     text = path.read_text()
     assert 'codex_home = "~/.codex-primary"' in text
+    assert 'profile = "default"' not in text
     assert "default_cooldown_minutes = 240" in text
 
 

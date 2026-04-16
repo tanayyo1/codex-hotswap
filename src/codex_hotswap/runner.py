@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import errno
 import os
 import pty
+import subprocess
 import time
 
 from .config import Config, Target
@@ -62,12 +63,29 @@ class CodexRunner:
             time.sleep(self.config.settings.swap_delay_seconds)
             current_args = ["resume", "--last"]
 
-    def login(self, target: Target, login_args: list[str]) -> int:
+    def login(self, target: Target, login_args: list[str], *, relogin: bool = False) -> int:
+        if not relogin:
+            logged_in, status_text = self.login_status(target)
+            if logged_in:
+                print(f"codex-hotswap: target '{target.name}' is already logged in")
+                if status_text:
+                    print(f"codex-hotswap: {status_text}")
+                print("codex-hotswap: use --relogin if you want to run codex login again")
+                return 0
         print(f"codex-hotswap: logging into target '{target.name}'")
         if target.codex_home:
             print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
         _, exit_code = self._run_passthrough(target, ["login", *login_args])
         return exit_code
+
+    def login_status(self, target: Target) -> tuple[bool, str]:
+        command = self.build_command(target, ["login", "status"])
+        env = self.build_env(target)
+        result = subprocess.run(command, env=env, capture_output=True, text=True)
+        text = (result.stdout or result.stderr).strip()
+        if result.returncode == 0 and "logged in" in text.lower():
+            return True, text
+        return False, text
 
     def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
         output, exit_code = self._run_passthrough(target, user_args, announce=True)

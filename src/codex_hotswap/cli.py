@@ -30,7 +30,7 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     setup_parser.add_argument("--count", type=int, help="Create numbered targets when --accounts is not provided")
     setup_parser.add_argument("--prefix", default="acc", help="Name prefix for generated targets with --count")
     setup_parser.add_argument("--codex-home-prefix", default="~/.codex-", help="Prefix used to generate CODEX_HOME paths")
-    setup_parser.add_argument("--profile", default="default", help="Profile to assign to generated targets")
+    setup_parser.add_argument("--profile", help="Optional profile to assign to generated targets")
     setup_parser.add_argument("--max-swaps", type=int, default=3, help="max_swaps setting for generated config")
     setup_parser.add_argument("--swap-delay-seconds", type=float, default=1.5, help="swap_delay_seconds setting")
     setup_parser.add_argument("--cooldown-minutes", type=int, default=240, help="default_cooldown_minutes setting")
@@ -44,6 +44,7 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
 
     login_parser = subparsers.add_parser("login", help="Run codex login for a target", parents=[common])
     login_parser.add_argument("target")
+    login_parser.add_argument("--relogin", action="store_true", help="Run login even if the target already appears authenticated")
     login_parser.add_argument("args", nargs=argparse.REMAINDER)
 
     add_target_parser = subparsers.add_parser("add-target", help="Add a target to config", parents=[common])
@@ -161,7 +162,7 @@ def main() -> int:
     if args.command == "login":
         target = config.get_target(args.target)
         runner = CodexRunner(config=config, state_store=state_store)
-        return runner.login(target, _normalize_remainder(args.args))
+        return runner.login(target, _normalize_remainder(args.args), relogin=args.relogin)
 
     if args.command == "add-target":
         target = Target(
@@ -298,8 +299,6 @@ def _build_setup_targets(
 ) -> list[Target]:
     if not codex_home_prefix.strip():
         raise ConfigError("--codex-home-prefix must be a non-empty string")
-    if not profile.strip():
-        raise ConfigError("--profile must be a non-empty string")
     return [
         Target(
             name=name,

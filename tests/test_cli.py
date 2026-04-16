@@ -76,6 +76,16 @@ def test_build_setup_targets_uses_prefix_and_profile() -> None:
     assert all(target.profile == "default" for target in targets)
 
 
+def test_build_setup_targets_allows_no_profile() -> None:
+    targets = _build_setup_targets(
+        target_names=["main"],
+        codex_home_prefix="~/.codex-",
+        profile=None,
+    )
+
+    assert targets[0].profile is None
+
+
 def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.toml"
     state_path = tmp_path / "state.json"
@@ -99,5 +109,6 @@ def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
     text = config_path.read_text()
     assert 'name = "main"' in text
     assert 'codex_home = "~/.codex-main"' in text
+    assert 'profile = "default"' not in text
     assert 'name = "work"' in text
     assert 'name = "backup"' in text
