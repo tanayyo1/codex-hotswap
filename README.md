@@ -179,6 +179,7 @@ When you run `codex-hot`:
 ## Useful Commands
 
 ```bash
+codex-hotswap doctor
 codex-hotswap status
 codex-hotswap list
 codex-hotswap current
@@ -218,6 +219,16 @@ or:
 ```bash
 codex-hotswap init
 ```
+
+### Verify the whole setup
+
+Run:
+
+```bash
+codex-hotswap doctor
+```
+
+That checks the shared home, current target, each auth vault, and the optional shim.
 
 ### Login did not finish
 

@@ -12,6 +12,8 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 - Added a one-command setup path that can create targets, log them in, and install the `codex` shim in one shot.
 - Made binary resolution skip the shim automatically so setup and login paths do not recurse into wrapped `codex`.
+- Added a `doctor` command to verify the shared home, auth vaults, current target, and shim wiring.
+- Tightened setup validation so login-only flags and shim-only flags cannot be passed in meaningless combinations.
 
 ## [0.2.0]
 

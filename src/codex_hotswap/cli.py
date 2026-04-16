@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 from dataclasses import replace
+import os
 import shutil
 import sys
 
@@ -48,6 +49,8 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     setup_parser.add_argument("--cooldown-minutes", type=int, default=240, help="default_cooldown_minutes setting")
     setup_parser.add_argument("--replace-targets", action="store_true", help="Replace existing targets instead of appending")
     setup_parser.add_argument("--login", action="store_true", help="Run codex login for each created target after setup")
+    setup_parser.add_argument("--login-arg", action="append", default=[], help="Additional argument to pass to each codex login command when using --login")
+    setup_parser.add_argument("--device-auth", action="store_true", help="Use codex login --device-auth for each target when using --login")
     setup_parser.add_argument("--install-shim", action="store_true", help="Install the codex shim after setup")
     setup_parser.add_argument("--shim-path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
     setup_parser.add_argument("--shim-force", action="store_true", help="Overwrite an existing codex shim when using --install-shim")
@@ -102,6 +105,10 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     uninstall_shim_parser = subparsers.add_parser("uninstall-shim", help="Remove the installed codex shim", parents=[common])
     uninstall_shim_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
 
+    doctor_parser = subparsers.add_parser("doctor", help="Check config, auth vaults, shared home, and shim status", parents=[common])
+    doctor_parser.add_argument("--shim-path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+    doctor_parser.add_argument("--skip-login-status", action="store_true", help="Skip codex login status checks for each target")
+
     return parser
 
 
@@ -127,6 +134,7 @@ def main() -> int:
 
     if args.command == "setup":
         try:
+            _validate_setup_args(args)
             target_names = _resolve_setup_target_names(args.accounts, args.count, args.prefix)
             config = _load_or_create_setup_config(
                 args.config_path,
@@ -153,9 +161,12 @@ def main() -> int:
                 print(f"  - {target.name} -> auth vault {target.codex_home}")
 
             if args.login:
+                login_args = list(args.login_arg)
+                if args.device_auth:
+                    login_args.append("--device-auth")
                 runner = CodexRunner(config=config, state_store=state_store)
                 for target in generated_targets:
-                    exit_code = runner.login(target, [])
+                    exit_code = runner.login(target, login_args)
                     if exit_code != 0:
                         return exit_code
             if args.install_shim:
@@ -254,6 +265,9 @@ def main() -> int:
         runner = CodexRunner(config=config, state_store=state_store)
         return runner.run(_normalize_remainder(args.args))
 
+    if args.command == "doctor":
+        return _run_doctor(config, state_store, state, shim_path=args.shim_path, skip_login_status=args.skip_login_status)
+
     if args.command == "install-shim":
         try:
             path = _install_codex_shim(args.path, real_bin=args.real_bin, force=args.force)
@@ -298,6 +312,13 @@ def _normalize_remainder(values: list[str]) -> list[str]:
     if values and values[0] == "--":
         return values[1:]
     return values
+
+
+def _validate_setup_args(args: argparse.Namespace) -> None:
+    if (args.login_arg or args.device_auth) and not args.login:
+        raise ConfigError("--login-arg and --device-auth require --login")
+    if args.shim_force and not args.install_shim:
+        raise ConfigError("--shim-force requires --install-shim")
 
 
 def _resolve_setup_target_names(accounts: str | None, count: int | None, prefix: str) -> list[str]:
@@ -441,6 +462,103 @@ def _render_codex_shim(real_bin: Path) -> str:
             "",
         ]
     )
+
+
+def _run_doctor(
+    config: Config,
+    state_store: StateStore,
+    state,
+    *,
+    shim_path: Path,
+    skip_login_status: bool,
+) -> int:
+    runner = CodexRunner(config=config, state_store=state_store)
+    current_target = state_store.ensure_current_target(config, state)
+    issues: list[str] = []
+
+    shared_home = config.shared_codex_home_path()
+    print(f"shared home: {shared_home}")
+    if shared_home.exists():
+        print("shared home status: ok")
+    else:
+        print("shared home status: missing")
+        issues.append("shared home is missing")
+
+    shared_auth = shared_home / "auth.json"
+    if shared_auth.exists():
+        print("shared auth: present")
+    else:
+        print("shared auth: missing")
+        issues.append("shared auth.json is missing")
+
+    print(f"current target: {current_target}")
+
+    resolved_codex = shutil.which("codex")
+    print(f"codex on PATH: {resolved_codex or 'missing'}")
+    if resolved_codex is None:
+        issues.append("codex binary not found in PATH")
+
+    if shim_path.exists():
+        print(f"shim: present at {shim_path}")
+        if _is_codex_shim(shim_path):
+            real_bin = _resolve_real_codex_binary(shim_path)
+            print(f"shim target: {real_bin or 'unknown'}")
+        else:
+            print("shim target: not a codex-hotswap shim")
+            issues.append(f"{shim_path} exists but is not a codex-hotswap shim")
+    else:
+        print(f"shim: missing at {shim_path}")
+
+    if resolved_codex is not None and shim_path.exists():
+        try:
+            same_path = Path(resolved_codex).resolve() == shim_path.resolve()
+        except OSError:
+            same_path = False
+        print(f"shim active on PATH: {'yes' if same_path else 'no'}")
+
+    for target in config.targets:
+        vault = Path(target.expanded_codex_home()) if target.expanded_codex_home() else None
+        prefix = f"target {target.name}"
+        print(f"{prefix}: {'active' if target.active else 'inactive'}")
+        if vault is None:
+            print(f"{prefix} auth vault: missing config")
+            issues.append(f"{target.name} has no auth vault path configured")
+            continue
+        print(f"{prefix} auth vault: {vault}")
+        if not vault.exists():
+            print(f"{prefix} auth vault status: missing")
+            issues.append(f"{target.name} auth vault directory is missing")
+            continue
+
+        auth_path = vault / "auth.json"
+        if auth_path.exists():
+            print(f"{prefix} auth.json: present")
+        else:
+            print(f"{prefix} auth.json: missing")
+            issues.append(f"{target.name} auth.json is missing")
+            continue
+
+        if skip_login_status:
+            print(f"{prefix} login status: skipped")
+            continue
+
+        logged_in, status_text = runner.login_status(target)
+        if logged_in:
+            print(f"{prefix} login status: ok")
+        else:
+            print(f"{prefix} login status: not authenticated")
+            issues.append(f"{target.name} login status check failed")
+        if status_text:
+            print(f"{prefix} login detail: {status_text}")
+
+    if issues:
+        print("doctor status: issues found")
+        for issue in issues:
+            print(f"- {issue}")
+        return 1
+
+    print("doctor status: ok")
+    return 0
 
 
 if __name__ == "__main__":

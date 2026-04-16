@@ -166,6 +166,52 @@ def test_setup_can_login_and_install_shim_in_one_command(tmp_path: Path, monkeyp
     assert 'shared_codex_home = "~/.codex"' in config_path.read_text()
 
 
+def test_setup_rejects_login_arg_without_login(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "setup",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--force",
+            "--count",
+            "2",
+            "--login-arg=--device-auth",
+        ],
+    )
+
+    assert main() == 1
+
+
+def test_setup_rejects_shim_force_without_install_shim(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "setup",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--force",
+            "--count",
+            "2",
+            "--shim-force",
+        ],
+    )
+
+    assert main() == 1
+
+
 def test_merge_setup_targets_replaces_existing_generated_targets() -> None:
     config = Config(
         path=Path("/tmp/config.toml"),
@@ -249,3 +295,83 @@ def test_setup_install_shim_failure_returns_error(tmp_path: Path, monkeypatch) -
     )
 
     assert main() == 1
+
+
+def test_doctor_reports_ok(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    shared_home = tmp_path / "shared"
+    shared_home.mkdir()
+    (shared_home / "auth.json").write_text("{}")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "auth.json").write_text("{}")
+    config_path.write_text(
+        f"""version = 1
+
+[settings]
+shared_codex_home = "{shared_home}"
+
+[[targets]]
+name = "acc1"
+codex_home = "{vault}"
+"""
+    )
+
+    monkeypatch.setattr("codex_hotswap.cli.shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.setattr("codex_hotswap.cli.CodexRunner.login_status", lambda self, target: (True, "Logged in using ChatGPT"))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "doctor",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+        ],
+    )
+
+    assert main() == 0
+    output = capsys.readouterr().out
+    assert "doctor status: ok" in output
+    assert "target acc1 login status: ok" in output
+
+
+def test_doctor_reports_missing_auth(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    shared_home = tmp_path / "shared"
+    shared_home.mkdir()
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    config_path.write_text(
+        f"""version = 1
+
+[settings]
+shared_codex_home = "{shared_home}"
+
+[[targets]]
+name = "acc1"
+codex_home = "{vault}"
+"""
+    )
+
+    monkeypatch.setattr("codex_hotswap.cli.shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "doctor",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+            "--skip-login-status",
+        ],
+    )
+
+    assert main() == 1
+    output = capsys.readouterr().out
+    assert "doctor status: issues found" in output
+    assert "shared auth.json is missing" in output
