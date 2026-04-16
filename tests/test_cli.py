@@ -2,8 +2,11 @@ from pathlib import Path
 
 from codex_hotswap.cli import (
     _build_setup_targets,
+    _install_codex_shim,
     _merge_setup_targets,
+    _resolve_real_codex_binary,
     _resolve_setup_target_names,
+    _uninstall_codex_shim,
     main,
 )
 from codex_hotswap.config import Config, ConfigError, Settings, Target
@@ -68,7 +71,7 @@ def test_resolve_setup_target_names_rejects_duplicates() -> None:
 def test_build_setup_targets_uses_prefix_and_profile() -> None:
     targets = _build_setup_targets(
         target_names=["main", "work"],
-        codex_home_prefix="~/.codex-",
+        auth_home_prefix="~/.codex-",
         profile="default",
     )
 
@@ -80,7 +83,7 @@ def test_build_setup_targets_uses_prefix_and_profile() -> None:
 def test_build_setup_targets_allows_no_profile() -> None:
     targets = _build_setup_targets(
         target_names=["main"],
-        codex_home_prefix="~/.codex-",
+        auth_home_prefix="~/.codex-",
         profile=None,
     )
 
@@ -110,6 +113,7 @@ def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
     text = config_path.read_text()
     assert 'name = "main"' in text
     assert 'codex_home = "~/.codex-main"' in text
+    assert 'shared_codex_home = "~/.codex"' in text
     assert 'profile = "default"' not in text
     assert 'name = "work"' in text
     assert 'name = "backup"' in text
@@ -118,7 +122,7 @@ def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
 def test_merge_setup_targets_replaces_existing_generated_targets() -> None:
     config = Config(
         path=Path("/tmp/config.toml"),
-        settings=Settings(),
+        settings=Settings(shared_codex_home="~/.codex"),
         targets=[
             Target(name="main", codex_home="~/.codex-old-main", note="old"),
             Target(name="custom", codex_home="~/.codex-custom", note="keep"),
@@ -137,3 +141,19 @@ def test_merge_setup_targets_replaces_existing_generated_targets() -> None:
     assert [target.name for target in updated.targets] == ["main", "custom", "backup"]
     assert updated.get_target("main").codex_home == "~/.codex-main"
     assert updated.get_target("custom").codex_home == "~/.codex-custom"
+
+
+def test_install_and_uninstall_codex_shim(tmp_path: Path) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+    real_bin = tmp_path / "real" / "codex"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\nexit 0\n")
+
+    installed = _install_codex_shim(shim_path, real_bin=real_bin, force=True)
+
+    assert installed == shim_path
+    assert shim_path.exists()
+    assert "CODEX_HOTSWAP_REAL_BIN" in shim_path.read_text()
+    assert _resolve_real_codex_binary(shim_path) == real_bin
+    assert _uninstall_codex_shim(shim_path) is True
+    assert not shim_path.exists()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+from dataclasses import replace
+import shutil
 import sys
 
 from . import __version__
@@ -29,7 +31,17 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     setup_parser.add_argument("--accounts", help="Comma-separated target names, e.g. main,work,backup")
     setup_parser.add_argument("--count", type=int, help="Create numbered targets when --accounts is not provided")
     setup_parser.add_argument("--prefix", default="acc", help="Name prefix for generated targets with --count")
-    setup_parser.add_argument("--codex-home-prefix", default="~/.codex-", help="Prefix used to generate CODEX_HOME paths")
+    setup_parser.add_argument(
+        "--auth-home-prefix",
+        dest="auth_home_prefix",
+        default="~/.codex-",
+        help="Prefix used to generate per-account auth vault paths",
+    )
+    setup_parser.add_argument(
+        "--codex-home-prefix",
+        dest="auth_home_prefix",
+        help=argparse.SUPPRESS,
+    )
     setup_parser.add_argument("--profile", help="Optional profile to assign to generated targets")
     setup_parser.add_argument("--max-swaps", type=int, default=3, help="max_swaps setting for generated config")
     setup_parser.add_argument("--swap-delay-seconds", type=float, default=1.5, help="swap_delay_seconds setting")
@@ -79,6 +91,14 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run codex through the hotswap wrapper", parents=[common])
     run_parser.add_argument("args", nargs=argparse.REMAINDER)
 
+    install_shim_parser = subparsers.add_parser("install-shim", help="Install a codex shim that routes through codex-hotswap", parents=[common])
+    install_shim_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+    install_shim_parser.add_argument("--real-bin", type=Path, help="Explicit path to the real codex binary")
+    install_shim_parser.add_argument("--force", action="store_true", help="Overwrite an existing shim at the target path")
+
+    uninstall_shim_parser = subparsers.add_parser("uninstall-shim", help="Remove the installed codex shim", parents=[common])
+    uninstall_shim_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+
     return parser
 
 
@@ -114,7 +134,7 @@ def main() -> int:
             )
             generated_targets = _build_setup_targets(
                 target_names=target_names,
-                codex_home_prefix=args.codex_home_prefix,
+                auth_home_prefix=args.auth_home_prefix,
                 profile=args.profile,
             )
             config = _merge_setup_targets(config, generated_targets, replace_targets=args.replace_targets)
@@ -127,7 +147,7 @@ def main() -> int:
             print(f"codex-hotswap: configured {len(generated_targets)} target(s) in {args.config_path}")
             print(f"codex-hotswap: current target set to {generated_targets[0].name}")
             for target in generated_targets:
-                print(f"  - {target.name} -> {target.codex_home}")
+                print(f"  - {target.name} -> auth vault {target.codex_home}")
 
             if args.login:
                 runner = CodexRunner(config=config, state_store=state_store)
@@ -224,6 +244,25 @@ def main() -> int:
         runner = CodexRunner(config=config, state_store=state_store)
         return runner.run(_normalize_remainder(args.args))
 
+    if args.command == "install-shim":
+        try:
+            path = _install_codex_shim(args.path, real_bin=args.real_bin, force=args.force)
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}", file=sys.stderr)
+            return 1
+        print(path)
+        return 0
+
+    if args.command == "uninstall-shim":
+        try:
+            removed = _uninstall_codex_shim(args.path)
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}", file=sys.stderr)
+            return 1
+        if removed:
+            print(args.path)
+        return 0
+
     parser.print_help()
     return 1
 
@@ -277,7 +316,14 @@ def _load_or_create_setup_config(
     force: bool,
 ) -> Config:
     if path.exists():
-        return load_config(path)
+        config = load_config(path)
+        if config.settings.shared_codex_home is None:
+            config = Config(
+                path=config.path,
+                settings=replace(config.settings, shared_codex_home="~/.codex"),
+                targets=config.targets,
+            )
+        return config
     if not force:
         raise ConfigError(f"Config file not found: {path}. Re-run with --force to create it.")
     return Config(
@@ -286,6 +332,7 @@ def _load_or_create_setup_config(
             max_swaps=max_swaps,
             swap_delay_seconds=swap_delay_seconds,
             default_cooldown_minutes=cooldown_minutes,
+            shared_codex_home="~/.codex",
         ),
         targets=[],
     )
@@ -294,15 +341,15 @@ def _load_or_create_setup_config(
 def _build_setup_targets(
     *,
     target_names: list[str],
-    codex_home_prefix: str,
+    auth_home_prefix: str,
     profile: str,
 ) -> list[Target]:
-    if not codex_home_prefix.strip():
-        raise ConfigError("--codex-home-prefix must be a non-empty string")
+    if not auth_home_prefix.strip():
+        raise ConfigError("--auth-home-prefix must be a non-empty string")
     return [
         Target(
             name=name,
-            codex_home=f"{codex_home_prefix}{name}",
+            codex_home=f"{auth_home_prefix}{name}",
             profile=profile,
             note=f"Configured by setup for {name}",
         )
@@ -321,6 +368,69 @@ def _merge_setup_targets(config: Config, generated_targets: list[Target], *, rep
         updated_targets.append(replacement or existing)
     updated_targets.extend(target for target in generated_targets if target.name in replacements)
     return Config(path=config.path, settings=config.settings, targets=updated_targets)
+
+
+def _install_codex_shim(path: Path, *, real_bin: Path | None = None, force: bool = False) -> Path:
+    if real_bin is None:
+        real_bin = _resolve_real_codex_binary(path)
+    if real_bin is None:
+        raise ConfigError("Could not find the real codex binary")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if not force and not _is_codex_shim(path):
+            raise ConfigError(f"Shim path already exists: {path}. Re-run with --force to replace it.")
+        if path.is_dir():
+            raise ConfigError(f"Shim path is a directory: {path}")
+
+    content = _render_codex_shim(real_bin)
+    path.write_text(content)
+    path.chmod(0o755)
+    return path
+
+
+def _uninstall_codex_shim(path: Path) -> bool:
+    if not path.exists():
+        return False
+    if not _is_codex_shim(path):
+        raise ConfigError(f"Refusing to remove non-shim file: {path}")
+    path.unlink()
+    return True
+
+
+def _resolve_real_codex_binary(shim_path: Path) -> Path | None:
+    if shim_path.exists() and _is_codex_shim(shim_path):
+        for line in shim_path.read_text(errors="ignore").splitlines():
+            if line.startswith("export CODEX_HOTSWAP_REAL_BIN="):
+                value = line.split("=", 1)[1].strip().strip('"')
+                if value:
+                    return Path(value)
+    resolved = shutil.which("codex")
+    if resolved is None:
+        return None
+    resolved_path = Path(resolved)
+    if resolved_path == shim_path:
+        return None
+    return resolved_path
+
+
+def _is_codex_shim(path: Path) -> bool:
+    try:
+        return "# codex-hotswap shim" in path.read_text(errors="ignore")
+    except (OSError, UnicodeError):
+        return False
+
+
+def _render_codex_shim(real_bin: Path) -> str:
+    return "\n".join(
+        [
+            "#!/usr/bin/env bash",
+            "# codex-hotswap shim",
+            f'export CODEX_HOTSWAP_REAL_BIN="{real_bin}"',
+            'exec codex-hot "$@"',
+            "",
+        ]
+    )
 
 
 if __name__ == "__main__":

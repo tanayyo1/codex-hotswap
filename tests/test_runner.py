@@ -10,7 +10,7 @@ from codex_hotswap.state import StateStore
 def build_runner(tmp_path: Path) -> CodexRunner:
     config = Config(
         path=tmp_path / "config.toml",
-        settings=Settings(),
+        settings=Settings(shared_codex_home=str(tmp_path / "shared-codex")),
         targets=[Target(name="primary", codex_home="~/.codex-primary", profile="default")],
     )
     return CodexRunner(config=config, state_store=StateStore(tmp_path / "state.json"))
@@ -29,28 +29,27 @@ def test_build_command_uses_target_args(tmp_path: Path) -> None:
     ]
 
 
-def test_build_env_includes_codex_home(tmp_path: Path) -> None:
+def test_build_runtime_env_uses_shared_codex_home(tmp_path: Path) -> None:
     runner = build_runner(tmp_path)
-    target = runner.config.targets[0]
 
-    env = runner.build_env(target)
+    env = runner.build_runtime_env()
 
-    assert env["CODEX_HOME"] == os.path.expanduser("~/.codex-primary")
+    assert env["CODEX_HOME"] == str(tmp_path / "shared-codex")
     assert env["PATH"] == os.environ["PATH"]
 
 
-def test_build_env_creates_codex_home_directory(tmp_path: Path) -> None:
+def test_build_login_env_creates_target_vault_directory(tmp_path: Path) -> None:
     codex_home = tmp_path / "account-home"
     runner = CodexRunner(
         config=Config(
             path=tmp_path / "config.toml",
-            settings=Settings(),
+            settings=Settings(shared_codex_home=str(tmp_path / "shared-codex")),
             targets=[Target(name="primary", codex_home=str(codex_home))],
         ),
         state_store=StateStore(tmp_path / "state.json"),
     )
 
-    env = runner.build_env(runner.config.targets[0])
+    env = runner.build_login_env(runner.config.targets[0])
 
     assert env["CODEX_HOME"] == str(codex_home)
     assert codex_home.is_dir()
@@ -73,14 +72,18 @@ def test_login_status_detects_logged_in(monkeypatch, tmp_path: Path) -> None:
 def test_invoke_returns_triggered_for_live_detection(monkeypatch, tmp_path: Path) -> None:
     runner = build_runner(tmp_path)
 
-    def fake_run_passthrough(target, user_args, announce=False):
+    def fake_activate(target):
+        return None
+
+    def fake_run_runtime_passthrough(target, user_args, announce=False):
         return InteractiveResult(
             output=bytearray(b"usage limit"),
             exit_code=0,
             live_trigger_pattern=r"\brate[_ -]?limit\b",
         )
 
-    monkeypatch.setattr(runner, "_run_passthrough", fake_run_passthrough)
+    monkeypatch.setattr(runner.auth_manager, "activate", fake_activate)
+    monkeypatch.setattr(runner, "_run_runtime_passthrough", fake_run_runtime_passthrough)
 
     outcome = runner._invoke(runner.config.targets[0], [])
 
@@ -107,3 +110,23 @@ def test_signal_helpers_ignore_missing_process(tmp_path: Path) -> None:
 
     assert runner._signal_process(999999, 2) is False
     assert runner._signal_process_group(999999, 2) is False
+
+
+def test_invoke_activates_target_before_runtime_run(monkeypatch, tmp_path: Path) -> None:
+    runner = build_runner(tmp_path)
+    activated = []
+
+    def fake_activate(target):
+        activated.append(target.name)
+        return None
+
+    def fake_run_runtime_passthrough(target, user_args, announce=False):
+        return InteractiveResult(output=bytearray(b"ok"), exit_code=0)
+
+    monkeypatch.setattr(runner.auth_manager, "activate", fake_activate)
+    monkeypatch.setattr(runner, "_run_runtime_passthrough", fake_run_runtime_passthrough)
+
+    outcome = runner._invoke(runner.config.targets[0], [])
+
+    assert activated == ["primary"]
+    assert outcome.triggered is False

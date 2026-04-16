@@ -15,6 +15,7 @@ def test_load_config_builds_target_args(tmp_path: Path) -> None:
 max_swaps = 4
 swap_delay_seconds = 2
 default_cooldown_minutes = 90
+shared_codex_home = "~/.codex"
 
 [[targets]]
 name = "primary"
@@ -31,6 +32,7 @@ extra_args = ["--search"]
     config = load_config(path)
     assert config.settings.max_swaps == 4
     assert config.settings.default_cooldown_minutes == 90
+    assert config.shared_codex_home_path() == Path.home() / ".codex"
     assert config.targets[0].env_overrides() == {"CODEX_HOME": os.path.expanduser("~/.codex-primary")}
     assert config.targets[0].codex_args() == [
         "--profile",
@@ -75,6 +77,7 @@ def test_write_default_config_contains_codex_home(tmp_path: Path) -> None:
     write_default_config(path)
 
     text = path.read_text()
+    assert 'shared_codex_home = "~/.codex"' in text
     assert 'codex_home = "~/.codex-primary"' in text
     assert 'profile = "default"' not in text
     assert "default_cooldown_minutes = 240" in text
@@ -88,7 +91,12 @@ def test_render_config_serializes_target_fields(tmp_path: Path) -> None:
     rendered = render_config(
         Config(
             path=tmp_path / "config.toml",
-            settings=Settings(max_swaps=2, swap_delay_seconds=2.5, default_cooldown_minutes=60),
+            settings=Settings(
+                max_swaps=2,
+                swap_delay_seconds=2.5,
+                default_cooldown_minutes=60,
+                shared_codex_home="~/.codex",
+            ),
             targets=[
                 Target(
                     name="work",

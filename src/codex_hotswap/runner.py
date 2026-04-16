@@ -18,7 +18,8 @@ import subprocess
 import time
 import tty
 
-from .config import Config, Target
+from .auth import AuthManager
+from .config import Config, ConfigError, Target
 from .detect import TriggerDetector
 from .state import StateStore
 
@@ -42,6 +43,7 @@ class CodexRunner:
         self.config = config
         self.state_store = state_store
         self.detector = detector or TriggerDetector()
+        self.auth_manager = AuthManager(config)
 
     def run(self, user_args: list[str]) -> int:
         state = self.state_store.load()
@@ -55,7 +57,11 @@ class CodexRunner:
         swaps = 0
         current_args = list(user_args)
         while True:
-            outcome = self._invoke(target, current_args)
+            try:
+                outcome = self._invoke(target, current_args)
+            except ConfigError as exc:
+                print(f"codex-hotswap: {exc}")
+                return 1
             if not outcome.triggered:
                 return outcome.exit_code
 
@@ -92,13 +98,15 @@ class CodexRunner:
                 return 0
         print(f"codex-hotswap: logging into target '{target.name}'")
         if target.codex_home:
-            print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
-        result = self._run_passthrough(target, ["login", *login_args])
+            print(f"codex-hotswap: auth vault={target.expanded_codex_home()}")
+        command = self.build_command(target, ["login", *login_args])
+        env = self.build_login_env(target)
+        result = self._spawn_interactive(command, env)
         return result.exit_code
 
     def login_status(self, target: Target) -> tuple[bool, str]:
         command = self.build_command(target, ["login", "status"])
-        env = self.build_env(target)
+        env = self.build_login_env(target)
         try:
             result = subprocess.run(command, env=env, capture_output=True, text=True)
         except FileNotFoundError:
@@ -111,7 +119,8 @@ class CodexRunner:
         return False, text
 
     def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
-        result = self._run_passthrough(target, user_args, announce=True)
+        self.auth_manager.activate(target)
+        result = self._run_runtime_passthrough(target, user_args, announce=True)
         if result.live_trigger_pattern is not None:
             return RunOutcome(
                 exit_code=result.exit_code,
@@ -127,7 +136,7 @@ class CodexRunner:
             trigger_pattern=detection.pattern,
         )
 
-    def _run_passthrough(
+    def _run_runtime_passthrough(
         self,
         target: Target,
         user_args: list[str],
@@ -135,7 +144,7 @@ class CodexRunner:
         announce: bool = False,
     ) -> InteractiveResult:
         command = self.build_command(target, user_args)
-        env = self.build_env(target)
+        env = self.build_runtime_env()
         if announce:
             print(f"codex-hotswap: using target '{target.name}'")
             if target.codex_home:
@@ -143,9 +152,19 @@ class CodexRunner:
         return self._spawn_interactive(command, env)
 
     def build_command(self, target: Target, user_args: list[str]) -> list[str]:
-        return ["codex", *target.codex_args(), *user_args]
+        return [self.codex_binary(), *target.codex_args(), *user_args]
 
-    def build_env(self, target: Target) -> dict[str, str]:
+    def codex_binary(self) -> str:
+        return os.environ.get("CODEX_HOTSWAP_REAL_BIN", "codex")
+
+    def build_runtime_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        shared_home = self.config.shared_codex_home_path()
+        env["CODEX_HOME"] = str(shared_home)
+        os.makedirs(shared_home, exist_ok=True)
+        return env
+
+    def build_login_env(self, target: Target) -> dict[str, str]:
         env = os.environ.copy()
         env.update(target.env_overrides())
         codex_home = env.get("CODEX_HOME")
@@ -344,7 +363,7 @@ def format_target_line(config: Config, state_store: StateStore, target_name: str
             suffix += f" [available_at={exhausted.available_at}]"
     target = config.get_target(target_name)
     if target.codex_home:
-        suffix += f" [CODEX_HOME={target.codex_home}]"
+        suffix += f" [auth_vault={target.codex_home}]"
     if not target.active:
         suffix += " [inactive]"
     return f"{marker} {target_name}{suffix}"

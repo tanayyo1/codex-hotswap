@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Changed
+
+- Switched runtime launches to a shared Codex home so repo/session history and `/resume` stay normal.
+- Moved multi-account handling to per-account auth vaults that are copied into the shared home before launch.
+- Clarified setup and README language around auth vaults versus the shared runtime home.
+- Added optional `codex` shim install/uninstall commands so plain `codex` can route through hotswap.
+
+### Fixed
+
+- Preserved existing repo-specific session history when rotating accounts.
+
 ## [0.1.4]
 
 ### Changed

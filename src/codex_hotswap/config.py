@@ -8,6 +8,7 @@ import tomllib
 
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "codex-hotswap" / "config.toml"
+DEFAULT_SHARED_CODEX_HOME = Path.home() / ".codex"
 
 
 class ConfigError(ValueError):
@@ -59,6 +60,7 @@ class Settings:
     max_swaps: int = 3
     swap_delay_seconds: float = 1.5
     default_cooldown_minutes: int | None = None
+    shared_codex_home: str | None = None
 
 
 @dataclass(slots=True)
@@ -66,6 +68,10 @@ class Config:
     path: Path
     settings: Settings
     targets: list[Target]
+
+    def shared_codex_home_path(self) -> Path:
+        value = self.settings.shared_codex_home or str(DEFAULT_SHARED_CODEX_HOME)
+        return Path(os.path.expanduser(value))
 
     def get_target(self, name: str) -> Target:
         for target in self.targets:
@@ -118,7 +124,12 @@ def write_default_config(path: Path = DEFAULT_CONFIG_PATH, force: bool = False) 
     path.parent.mkdir(parents=True, exist_ok=True)
     config = Config(
         path=path,
-        settings=Settings(max_swaps=3, swap_delay_seconds=1.5, default_cooldown_minutes=240),
+        settings=Settings(
+            max_swaps=3,
+            swap_delay_seconds=1.5,
+            default_cooldown_minutes=240,
+            shared_codex_home="~/.codex",
+        ),
         targets=[
             Target(name="primary", codex_home="~/.codex-primary", note="Your primary Codex account"),
             Target(name="backup", codex_home="~/.codex-backup", note="A backup Codex account"),
@@ -153,16 +164,20 @@ def _load_settings(raw: Any) -> Settings:
     max_swaps = raw.get("max_swaps", 3)
     delay = raw.get("swap_delay_seconds", 1.5)
     cooldown = raw.get("default_cooldown_minutes")
+    shared_codex_home = raw.get("shared_codex_home")
     if not isinstance(max_swaps, int) or max_swaps < 1:
         raise ConfigError("settings.max_swaps must be a positive integer")
     if not isinstance(delay, (int, float)) or delay < 0:
         raise ConfigError("settings.swap_delay_seconds must be a non-negative number")
     if cooldown is not None and (not isinstance(cooldown, int) or cooldown < 1):
         raise ConfigError("settings.default_cooldown_minutes must be a positive integer when provided")
+    if shared_codex_home is not None and (not isinstance(shared_codex_home, str) or not shared_codex_home.strip()):
+        raise ConfigError("settings.shared_codex_home must be a non-empty string when provided")
     return Settings(
         max_swaps=max_swaps,
         swap_delay_seconds=float(delay),
         default_cooldown_minutes=cooldown,
+        shared_codex_home=shared_codex_home,
     )
 
 
@@ -237,6 +252,8 @@ def _render_settings(settings: Settings) -> list[str]:
     ]
     if settings.default_cooldown_minutes is not None:
         lines.append(f"default_cooldown_minutes = {settings.default_cooldown_minutes}")
+    if settings.shared_codex_home is not None:
+        lines.append(f'shared_codex_home = "{_escape_string(settings.shared_codex_home)}"')
     return lines
 
 
