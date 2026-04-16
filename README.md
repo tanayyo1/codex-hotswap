@@ -1,7 +1,7 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 Use multiple Codex accounts in the terminal and automatically switch to the next one when the current one hits a limit or similar failure.
 
@@ -166,6 +166,8 @@ This creates:
 - `acc3` -> `~/.codex-acc3`
 - `acc4` -> `~/.codex-acc4`
 
+If you rerun `setup` later with the same names, `codex-hotswap` updates those generated targets instead of failing on duplicates.
+
 Then:
 
 ```bash
@@ -209,7 +211,7 @@ it does this:
 
 1. launches Codex using your current target
 2. watches the terminal output
-3. if Codex exits with a matched limit/quota/provider-style failure
+3. if Codex hits a matched usage-limit or rate-limit style failure
 4. marks that target exhausted
 5. switches to the next available target
 6. runs `codex resume --last`
@@ -296,8 +298,10 @@ Possible reasons:
 
 - you ran `codex` instead of `codex-hot`
 - the account was never logged in
-- Codex changed its output and the failure was not matched
+- Codex changed its output and the failure banner was not matched
 - all configured targets are exhausted
+
+The live detector is intentionally conservative. It prefers missing an unfamiliar failure banner over rotating accounts because of a generic phrase typed into the chat.
 
 Check:
 

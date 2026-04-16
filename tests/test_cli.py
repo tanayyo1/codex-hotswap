@@ -2,10 +2,11 @@ from pathlib import Path
 
 from codex_hotswap.cli import (
     _build_setup_targets,
+    _merge_setup_targets,
     _resolve_setup_target_names,
     main,
 )
-from codex_hotswap.config import ConfigError
+from codex_hotswap.config import Config, ConfigError, Settings, Target
 
 
 def test_add_and_remove_target_updates_config(tmp_path: Path, monkeypatch) -> None:
@@ -112,3 +113,27 @@ def test_setup_creates_config_and_targets(tmp_path: Path, monkeypatch) -> None:
     assert 'profile = "default"' not in text
     assert 'name = "work"' in text
     assert 'name = "backup"' in text
+
+
+def test_merge_setup_targets_replaces_existing_generated_targets() -> None:
+    config = Config(
+        path=Path("/tmp/config.toml"),
+        settings=Settings(),
+        targets=[
+            Target(name="main", codex_home="~/.codex-old-main", note="old"),
+            Target(name="custom", codex_home="~/.codex-custom", note="keep"),
+        ],
+    )
+
+    updated = _merge_setup_targets(
+        config,
+        [
+            Target(name="main", codex_home="~/.codex-main", note="new"),
+            Target(name="backup", codex_home="~/.codex-backup", note="new"),
+        ],
+        replace_targets=False,
+    )
+
+    assert [target.name for target in updated.targets] == ["main", "custom", "backup"]
+    assert updated.get_target("main").codex_home == "~/.codex-main"
+    assert updated.get_target("custom").codex_home == "~/.codex-custom"

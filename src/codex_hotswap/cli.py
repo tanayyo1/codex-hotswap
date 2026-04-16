@@ -314,10 +314,13 @@ def _merge_setup_targets(config: Config, generated_targets: list[Target], *, rep
     if replace_targets:
         return Config(path=config.path, settings=config.settings, targets=generated_targets)
 
-    updated = config
-    for target in generated_targets:
-        updated = updated.with_added_target(target)
-    return updated
+    replacements = {target.name: target for target in generated_targets}
+    updated_targets: list[Target] = []
+    for existing in config.targets:
+        replacement = replacements.pop(existing.name, None)
+        updated_targets.append(replacement or existing)
+    updated_targets.extend(target for target in generated_targets if target.name in replacements)
+    return Config(path=config.path, settings=config.settings, targets=updated_targets)
 
 
 if __name__ == "__main__":

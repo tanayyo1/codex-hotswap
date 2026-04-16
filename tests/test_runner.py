@@ -86,3 +86,24 @@ def test_invoke_returns_triggered_for_live_detection(monkeypatch, tmp_path: Path
 
     assert outcome.triggered is True
     assert outcome.trigger_pattern == r"\brate[_ -]?limit\b"
+
+
+def test_login_status_handles_missing_codex_binary(monkeypatch, tmp_path: Path) -> None:
+    runner = build_runner(tmp_path)
+
+    def fake_run(command, env, capture_output, text):
+        raise FileNotFoundError
+
+    monkeypatch.setattr("codex_hotswap.runner.subprocess.run", fake_run)
+
+    logged_in, status_text = runner.login_status(runner.config.targets[0])
+
+    assert logged_in is False
+    assert "not found" in status_text
+
+
+def test_signal_helpers_ignore_missing_process(tmp_path: Path) -> None:
+    runner = build_runner(tmp_path)
+
+    assert runner._signal_process(999999, 2) is False
+    assert runner._signal_process_group(999999, 2) is False

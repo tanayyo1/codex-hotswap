@@ -15,6 +15,13 @@ def test_trigger_detector_matches_usage_limit_banner() -> None:
     assert result.pattern is not None
 
 
+def test_live_trigger_detector_ignores_generic_provider_phrase() -> None:
+    detector = TriggerDetector()
+    result = detector.detect_live("Can you explain what provider error means in this stack trace?")
+    assert result.triggered is False
+    assert result.pattern is None
+
+
 def test_trigger_detector_ignores_normal_output() -> None:
     detector = TriggerDetector()
     result = detector.detect("All tasks completed successfully")

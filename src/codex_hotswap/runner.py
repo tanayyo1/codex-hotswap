@@ -99,8 +99,13 @@ class CodexRunner:
     def login_status(self, target: Target) -> tuple[bool, str]:
         command = self.build_command(target, ["login", "status"])
         env = self.build_env(target)
-        result = subprocess.run(command, env=env, capture_output=True, text=True)
-        text = (result.stdout or result.stderr).strip()
+        try:
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+        except FileNotFoundError:
+            return False, "codex binary not found in PATH"
+        except OSError as exc:
+            return False, str(exc)
+        text = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part and part.strip())
         if result.returncode == 0 and "logged in" in text.lower():
             return True, text
         return False, text
@@ -115,7 +120,7 @@ class CodexRunner:
             )
 
         decoded_output = result.output.decode("utf-8", errors="replace")
-        detection = self.detector.detect(decoded_output)
+        detection = self.detector.detect_exit(decoded_output)
         return RunOutcome(
             exit_code=result.exit_code,
             triggered=result.exit_code != 0 and detection.triggered,
@@ -183,11 +188,10 @@ class CodexRunner:
                         offset += len(data)
                         transcript.extend(data)
                         if live_trigger_pattern is None:
-                            detection = self.detector.detect(transcript.decode("utf-8", errors="replace"))
+                            detection = self.detector.detect_live(transcript.decode("utf-8", errors="replace"))
                             if detection.triggered:
                                 live_trigger_pattern = detection.pattern
-                                os.killpg(process.pid, signal.SIGINT)
-                                sent_interrupt = True
+                                sent_interrupt = self._signal_process_group(process.pid, signal.SIGINT)
 
                 returncode = process.poll()
                 if returncode is not None:
@@ -202,8 +206,7 @@ class CodexRunner:
                     )
 
                 if live_trigger_pattern is not None and not sent_interrupt:
-                    os.killpg(process.pid, signal.SIGINT)
-                    sent_interrupt = True
+                    sent_interrupt = self._signal_process_group(process.pid, signal.SIGINT)
                 time.sleep(0.1)
         finally:
             try:
@@ -261,11 +264,11 @@ class CodexRunner:
                         raise
 
                     if live_trigger_pattern is None:
-                        detection = self.detector.detect(output.decode("utf-8", errors="replace"))
+                        detection = self.detector.detect_live(output.decode("utf-8", errors="replace"))
                         if detection.triggered:
                             live_trigger_pattern = detection.pattern
-                            os.kill(pid, signal.SIGINT)
-                            interrupt_sent_at = time.time()
+                            if self._signal_process(pid, signal.SIGINT):
+                                interrupt_sent_at = time.time()
 
                 if stdin_open and stdin_fd in ready:
                     try:
@@ -284,7 +287,7 @@ class CodexRunner:
                     break
 
                 if interrupt_sent_at is not None and time.time() - interrupt_sent_at > 1:
-                    os.kill(pid, signal.SIGTERM)
+                    self._signal_process(pid, signal.SIGTERM)
                     interrupt_sent_at = None
         finally:
             if previous_winch_handler is not None:
@@ -305,6 +308,28 @@ class CodexRunner:
         with path.open("rb") as handle:
             handle.seek(offset)
             return handle.read()
+
+    def _signal_process_group(self, pid: int, sig: signal.Signals) -> bool:
+        try:
+            os.killpg(pid, sig)
+        except ProcessLookupError:
+            return False
+        except OSError as exc:
+            if exc.errno == errno.ESRCH:
+                return False
+            raise
+        return True
+
+    def _signal_process(self, pid: int, sig: signal.Signals) -> bool:
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return False
+        except OSError as exc:
+            if exc.errno == errno.ESRCH:
+                return False
+            raise
+        return True
 
 
 def format_target_line(config: Config, state_store: StateStore, target_name: str) -> str:
