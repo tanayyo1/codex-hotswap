@@ -36,6 +36,7 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     exhaust_parser = subparsers.add_parser("exhaust", help="Mark a target as exhausted", parents=[common])
     exhaust_parser.add_argument("target")
     exhaust_parser.add_argument("--reason", default="manual")
+    exhaust_parser.add_argument("--cooldown-minutes", type=int)
 
     reset_parser = subparsers.add_parser("reset", help="Clear exhaustion markers", parents=[common])
     reset_parser.add_argument("target", nargs="?")
@@ -106,7 +107,7 @@ def main() -> int:
 
     if args.command == "exhaust":
         config.get_target(args.target)
-        state_store.mark_exhausted(state, args.target, args.reason)
+        state_store.mark_exhausted(state, args.target, args.reason, cooldown_minutes=args.cooldown_minutes)
         print(args.target)
         return 0
 

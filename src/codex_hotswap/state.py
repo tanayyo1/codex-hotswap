@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 import json
@@ -16,6 +16,7 @@ DEFAULT_STATE_PATH = Path.home() / ".local" / "state" / "codex-hotswap" / "state
 class ExhaustedTarget:
     reason: str
     exhausted_at: str
+    available_at: str | None = None
 
 
 @dataclass(slots=True)
@@ -41,7 +42,9 @@ class StateStore:
         current_target = raw.get("current_target")
         if current_target is not None and not isinstance(current_target, str):
             current_target = None
-        return State(current_target=current_target, exhausted_targets=exhausted)
+        state = State(current_target=current_target, exhausted_targets=exhausted)
+        self._prune_expired(state)
+        return state
 
     def save(self, state: State) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,6 +54,7 @@ class StateStore:
                 name: {
                     "reason": item.reason,
                     "exhausted_at": item.exhausted_at,
+                    "available_at": item.available_at,
                 }
                 for name, item in state.exhausted_targets.items()
             },
@@ -81,10 +85,15 @@ class StateStore:
         self.save(state)
         return next_name
 
-    def mark_exhausted(self, state: State, target: str, reason: str) -> None:
+    def mark_exhausted(self, state: State, target: str, reason: str, cooldown_minutes: int | None = None) -> None:
+        exhausted_at = datetime.now(UTC)
+        available_at = None
+        if cooldown_minutes is not None:
+            available_at = (exhausted_at + timedelta(minutes=cooldown_minutes)).isoformat()
         state.exhausted_targets[target] = ExhaustedTarget(
             reason=reason,
-            exhausted_at=datetime.now(UTC).isoformat(),
+            exhausted_at=exhausted_at.isoformat(),
+            available_at=available_at,
         )
         self.save(state)
 
@@ -117,3 +126,18 @@ class StateStore:
     def set_current_target(self, state: State, target: str) -> None:
         state.current_target = target
         self.save(state)
+
+    def _prune_expired(self, state: State) -> None:
+        now = datetime.now(UTC)
+        expired = []
+        for name, item in state.exhausted_targets.items():
+            if item.available_at is None:
+                continue
+            try:
+                available_at = datetime.fromisoformat(item.available_at)
+            except ValueError:
+                continue
+            if available_at <= now:
+                expired.append(name)
+        for name in expired:
+            state.exhausted_targets.pop(name, None)

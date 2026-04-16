@@ -13,6 +13,7 @@ def test_load_config_builds_target_args(tmp_path: Path) -> None:
 [settings]
 max_swaps = 4
 swap_delay_seconds = 2
+default_cooldown_minutes = 90
 
 [[targets]]
 name = "primary"
@@ -28,6 +29,7 @@ extra_args = ["--search"]
 
     config = load_config(path)
     assert config.settings.max_swaps == 4
+    assert config.settings.default_cooldown_minutes == 90
     assert config.targets[0].env_overrides() == {"CODEX_HOME": "~/.codex-primary"}
     assert config.targets[0].codex_args() == [
         "--profile",
@@ -73,3 +75,4 @@ def test_write_default_config_contains_codex_home(tmp_path: Path) -> None:
 
     text = path.read_text()
     assert 'codex_home = "~/.codex-primary"' in text
+    assert "default_cooldown_minutes = 240" in text

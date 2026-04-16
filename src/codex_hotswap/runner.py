@@ -40,7 +40,12 @@ class CodexRunner:
             if not outcome.triggered:
                 return outcome.exit_code
 
-            self.state_store.mark_exhausted(state, target.name, f"triggered by {outcome.trigger_pattern}")
+            self.state_store.mark_exhausted(
+                state,
+                target.name,
+                f"triggered by {outcome.trigger_pattern}",
+                cooldown_minutes=self.config.settings.default_cooldown_minutes,
+            )
             next_name = self.state_store.next_available_target(self.config, state, start_from=target.name)
             if next_name is None:
                 print("codex-hotswap: no non-exhausted targets remain")
@@ -113,6 +118,8 @@ def format_target_line(config: Config, state_store: StateStore, target_name: str
     suffix = ""
     if exhausted:
         suffix = f" [exhausted: {exhausted.reason}]"
+        if exhausted.available_at:
+            suffix += f" [available_at={exhausted.available_at}]"
     target = config.get_target(target_name)
     if target.codex_home:
         suffix += f" [CODEX_HOME={target.codex_home}]"

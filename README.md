@@ -54,6 +54,7 @@ version = 1
 [settings]
 max_swaps = 3
 swap_delay_seconds = 1.5
+default_cooldown_minutes = 240
 
 [[targets]]
 name = "primary"
@@ -85,9 +86,10 @@ codex-hot --search
 If a run exits non-zero and matches one of the trigger patterns, `codex-hot` will:
 
 1. mark the current target as exhausted
-2. rotate to the next available target
-3. wait briefly
-4. run `codex ... resume --last`
+2. assign it a cooldown window if configured
+3. rotate to the next available target
+4. wait briefly
+5. run `codex ... resume --last`
 
 Because `resume --last` is directory-aware, recovery is scoped to the current working tree.
 
@@ -101,6 +103,7 @@ codex-hotswap current
 codex-hotswap use <target>
 codex-hotswap next
 codex-hotswap exhaust <target> [--reason <text>]
+codex-hotswap exhaust <target> [--reason <text>] [--cooldown-minutes <n>]
 codex-hotswap reset [target]
 codex-hotswap run [codex args...]
 ```
@@ -139,6 +142,12 @@ Because Codex does not expose the same stop-hook mechanism as Claude Code, this 
 - `too many requests`
 
 You should treat this as output-driven recovery, not a guarantee that every upstream failure mode can be recognized perfectly.
+
+## Exhaustion Tracking
+
+`codex-hotswap` does not read a real usage counter from Codex. Instead, it tracks local exhaustion state when a target fails with a swap-worthy error.
+
+With `settings.default_cooldown_minutes`, exhausted targets re-enter rotation automatically after the cooldown expires. Without a cooldown, a target stays exhausted until you reset it manually.
 
 ## Development
 

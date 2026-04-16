@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from codex_hotswap.config import Config, Settings, Target
@@ -45,3 +46,18 @@ def test_ensure_runnable_target_skips_exhausted_current(tmp_path: Path) -> None:
     store.mark_exhausted(state, "primary", "rate limit")
 
     assert store.ensure_runnable_target(config, state) == "backup"
+
+
+def test_expired_cooldown_reenters_rotation(tmp_path: Path) -> None:
+    store = StateStore(tmp_path / "state.json")
+    config = build_config()
+    state = store.load()
+    store.ensure_current_target(config, state)
+    store.mark_exhausted(state, "primary", "rate limit", cooldown_minutes=1)
+
+    expired_state = store.load()
+    expired_state.exhausted_targets["primary"].available_at = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    store.save(expired_state)
+
+    reloaded = store.load()
+    assert "primary" not in reloaded.exhausted_targets

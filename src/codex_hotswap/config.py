@@ -52,6 +52,7 @@ class Target:
 class Settings:
     max_swaps: int = 3
     swap_delay_seconds: float = 1.5
+    default_cooldown_minutes: int | None = None
 
 
 @dataclass(slots=True)
@@ -102,6 +103,7 @@ def write_default_config(path: Path = DEFAULT_CONFIG_PATH, force: bool = False) 
 [settings]
 max_swaps = 3
 swap_delay_seconds = 1.5
+default_cooldown_minutes = 240
 
 [[targets]]
 name = "primary"
@@ -125,11 +127,18 @@ def _load_settings(raw: Any) -> Settings:
 
     max_swaps = raw.get("max_swaps", 3)
     delay = raw.get("swap_delay_seconds", 1.5)
+    cooldown = raw.get("default_cooldown_minutes")
     if not isinstance(max_swaps, int) or max_swaps < 1:
         raise ConfigError("settings.max_swaps must be a positive integer")
     if not isinstance(delay, (int, float)) or delay < 0:
         raise ConfigError("settings.swap_delay_seconds must be a non-negative number")
-    return Settings(max_swaps=max_swaps, swap_delay_seconds=float(delay))
+    if cooldown is not None and (not isinstance(cooldown, int) or cooldown < 1):
+        raise ConfigError("settings.default_cooldown_minutes must be a positive integer when provided")
+    return Settings(
+        max_swaps=max_swaps,
+        swap_delay_seconds=float(delay),
+        default_cooldown_minutes=cooldown,
+    )
 
 
 def _load_target(raw: Any, seen_names: set[str]) -> Target:
