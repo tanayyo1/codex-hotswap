@@ -2,10 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import errno
+import fcntl
 import os
 import pty
+import select
+import signal
+import struct
+import sys
+import termios
 import subprocess
 import time
+import tty
 
 from .config import Config, Target
 from .detect import TriggerDetector
@@ -129,19 +136,61 @@ class CodexRunner:
         if pid == 0:
             os.execvpe(command[0], command, env)
 
+        stdin_fd = sys.stdin.fileno()
+        stdout_fd = sys.stdout.fileno()
+        old_tty_settings = None
+        previous_winch_handler = None
+
+        def sync_winsize(*_: object) -> None:
+            try:
+                packed = fcntl.ioctl(stdin_fd, termios.TIOCGWINSZ, struct.pack("HHHH", 0, 0, 0, 0))
+                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, packed)
+            except OSError:
+                pass
+
+        if os.isatty(stdin_fd):
+            old_tty_settings = termios.tcgetattr(stdin_fd)
+            tty.setraw(stdin_fd)
+            sync_winsize()
+            previous_winch_handler = signal.getsignal(signal.SIGWINCH)
+            signal.signal(signal.SIGWINCH, sync_winsize)
+
         try:
+            stdin_open = True
             while True:
-                try:
-                    data = os.read(master_fd, 1024)
-                    if not data:
-                        break
-                    output.extend(data)
-                    os.write(1, data)
-                except OSError as exc:
-                    if exc.errno == errno.EIO:
-                        break
-                    raise
+                read_fds = [master_fd]
+                if stdin_open:
+                    read_fds.append(stdin_fd)
+
+                ready, _, _ = select.select(read_fds, [], [])
+
+                if master_fd in ready:
+                    try:
+                        data = os.read(master_fd, 1024)
+                        if not data:
+                            break
+                        output.extend(data)
+                        os.write(stdout_fd, data)
+                    except OSError as exc:
+                        if exc.errno == errno.EIO:
+                            break
+                        raise
+
+                if stdin_open and stdin_fd in ready:
+                    try:
+                        user_input = os.read(stdin_fd, 1024)
+                    except OSError:
+                        stdin_open = False
+                    else:
+                        if not user_input:
+                            stdin_open = False
+                        else:
+                            os.write(master_fd, user_input)
         finally:
+            if previous_winch_handler is not None:
+                signal.signal(signal.SIGWINCH, previous_winch_handler)
+            if old_tty_settings is not None:
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty_settings)
             os.close(master_fd)
 
         _, status = os.waitpid(pid, 0)
