@@ -34,5 +34,22 @@ def test_build_env_includes_codex_home(tmp_path: Path) -> None:
 
     env = runner.build_env(target)
 
-    assert env["CODEX_HOME"] == "~/.codex-primary"
+    assert env["CODEX_HOME"] == os.path.expanduser("~/.codex-primary")
     assert env["PATH"] == os.environ["PATH"]
+
+
+def test_build_env_creates_codex_home_directory(tmp_path: Path) -> None:
+    codex_home = tmp_path / "account-home"
+    runner = CodexRunner(
+        config=Config(
+            path=tmp_path / "config.toml",
+            settings=Settings(),
+            targets=[Target(name="primary", codex_home=str(codex_home))],
+        ),
+        state_store=StateStore(tmp_path / "state.json"),
+    )
+
+    env = runner.build_env(runner.config.targets[0])
+
+    assert env["CODEX_HOME"] == str(codex_home)
+    assert codex_home.is_dir()

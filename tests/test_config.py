@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import pytest
 
@@ -30,7 +31,7 @@ extra_args = ["--search"]
     config = load_config(path)
     assert config.settings.max_swaps == 4
     assert config.settings.default_cooldown_minutes == 90
-    assert config.targets[0].env_overrides() == {"CODEX_HOME": "~/.codex-primary"}
+    assert config.targets[0].env_overrides() == {"CODEX_HOME": os.path.expanduser("~/.codex-primary")}
     assert config.targets[0].codex_args() == [
         "--profile",
         "default",

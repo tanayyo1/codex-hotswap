@@ -27,6 +27,10 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     subparsers.add_parser("status", help="Show configured targets and current state", parents=[common])
     subparsers.add_parser("current", help="Print the current target", parents=[common])
 
+    login_parser = subparsers.add_parser("login", help="Run codex login for a target", parents=[common])
+    login_parser.add_argument("target")
+    login_parser.add_argument("args", nargs=argparse.REMAINDER)
+
     use_parser = subparsers.add_parser("use", help="Set the active target", parents=[common])
     use_parser.add_argument("target")
 
@@ -85,6 +89,11 @@ def main() -> int:
         current = state_store.ensure_current_target(config, state)
         print(current)
         return 0
+
+    if args.command == "login":
+        target = config.get_target(args.target)
+        runner = CodexRunner(config=config, state_store=state_store)
+        return runner.login(target, _normalize_remainder(args.args))
 
     if args.command == "use":
         target = config.get_target(args.target)

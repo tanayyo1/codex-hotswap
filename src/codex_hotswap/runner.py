@@ -62,13 +62,15 @@ class CodexRunner:
             time.sleep(self.config.settings.swap_delay_seconds)
             current_args = ["resume", "--last"]
 
-    def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
-        command = self.build_command(target, user_args)
-        env = self.build_env(target)
-        print(f"codex-hotswap: using target '{target.name}'")
+    def login(self, target: Target, login_args: list[str]) -> int:
+        print(f"codex-hotswap: logging into target '{target.name}'")
         if target.codex_home:
-            print(f"codex-hotswap: CODEX_HOME={target.codex_home}")
-        output, exit_code = self._spawn_pty(command, env)
+            print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
+        _, exit_code = self._run_passthrough(target, ["login", *login_args])
+        return exit_code
+
+    def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
+        output, exit_code = self._run_passthrough(target, user_args, announce=True)
         decoded_output = output.decode("utf-8", errors="replace")
         detection = self.detector.detect(decoded_output)
         return RunOutcome(
@@ -77,12 +79,30 @@ class CodexRunner:
             trigger_pattern=detection.pattern,
         )
 
+    def _run_passthrough(
+        self,
+        target: Target,
+        user_args: list[str],
+        *,
+        announce: bool = False,
+    ) -> tuple[bytearray, int]:
+        command = self.build_command(target, user_args)
+        env = self.build_env(target)
+        if announce:
+            print(f"codex-hotswap: using target '{target.name}'")
+            if target.codex_home:
+                print(f"codex-hotswap: CODEX_HOME={target.expanded_codex_home()}")
+        return self._spawn_pty(command, env)
+
     def build_command(self, target: Target, user_args: list[str]) -> list[str]:
         return ["codex", *target.codex_args(), *user_args]
 
     def build_env(self, target: Target) -> dict[str, str]:
         env = os.environ.copy()
         env.update(target.env_overrides())
+        codex_home = env.get("CODEX_HOME")
+        if codex_home:
+            os.makedirs(codex_home, exist_ok=True)
         return env
 
     def _spawn_pty(self, command: list[str], env: dict[str, str]) -> tuple[bytearray, int]:

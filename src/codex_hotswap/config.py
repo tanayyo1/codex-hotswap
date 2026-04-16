@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 import tomllib
@@ -44,8 +45,13 @@ class Target:
     def env_overrides(self) -> dict[str, str]:
         env: dict[str, str] = {}
         if self.codex_home:
-            env["CODEX_HOME"] = self.codex_home
+            env["CODEX_HOME"] = self.expanded_codex_home()
         return env
+
+    def expanded_codex_home(self) -> str | None:
+        if not self.codex_home:
+            return None
+        return os.path.expanduser(self.codex_home)
 
 
 @dataclass(slots=True)
