@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 import sys
 
+from . import __version__
 from .config import ConfigError, DEFAULT_CONFIG_PATH, Target, load_config, save_config, write_default_config
 from .runner import CodexRunner, format_target_line
 from .state import DEFAULT_STATE_PATH, StateStore
@@ -13,6 +14,7 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=argv0)
     parser.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to config.toml")
     parser.add_argument("--state-path", type=Path, default=DEFAULT_STATE_PATH, help="Path to state.json")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config-path", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to config.toml")

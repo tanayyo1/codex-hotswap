@@ -7,15 +7,33 @@ name = "codex-hotswap"
 version = "0.1.0"
 description = "Rotate Codex launch targets and resume the latest session after rate-limit style failures."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 requires-python = ">=3.11"
 authors = [
   { name = "Tanay", email = "tanayy07@gmail.com" }
 ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Utilities",
+]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/tanayyo1/codex-hotswap"
+Repository = "https://github.com/tanayyo1/codex-hotswap"
+Issues = "https://github.com/tanayyo1/codex-hotswap/issues"
+
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["build>=1.2", "pytest>=8.0"]
 
 [project.scripts]
 codex-hotswap = "codex_hotswap.cli:main"
@@ -29,4 +47,3 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

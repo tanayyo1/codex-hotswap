@@ -1,5 +1,8 @@
 # codex-hotswap
 
+[![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+
 Automatically rotate between Codex launch targets when a run hits a rate limit, quota issue, or provider error, then resume the most recent session in the same working directory.
 
 `codex-hotswap` is for people who use Codex in the terminal and do not want to stop working every time one account, profile, or provider hits a limit.
@@ -62,6 +65,14 @@ Each target can point to a different `CODEX_HOME`, which means each target can k
 That is how `codex-hotswap` supports separate logged-in accounts cleanly.
 
 ## Install
+
+With `pipx`:
+
+```bash
+pipx install git+https://github.com/tanayyo1/codex-hotswap.git
+```
+
+From a local checkout:
 
 ```bash
 pip install .
@@ -257,6 +268,10 @@ What it does not guarantee:
 ## Development
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
 python -m pytest
 ```
 
@@ -265,11 +280,9 @@ CI runs on pushes and pull requests and currently verifies:
 - test suite on Python `3.11`, `3.12`, and `3.13`
 - package build via `python -m build`
 
-For local packaging, prefer a virtual environment:
+For local packaging:
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip build
+python -m pip install build
 python -m build
 ```
