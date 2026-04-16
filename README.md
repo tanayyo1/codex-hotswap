@@ -259,3 +259,17 @@ What it does not guarantee:
 ```bash
 python -m pytest
 ```
+
+CI runs on pushes and pull requests and currently verifies:
+
+- test suite on Python `3.11`, `3.12`, and `3.13`
+- package build via `python -m build`
+
+For local packaging, prefer a virtual environment:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip build
+python -m build
+```
