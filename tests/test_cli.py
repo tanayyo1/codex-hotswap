@@ -290,7 +290,20 @@ def test_install_and_uninstall_codex_shim(tmp_path: Path) -> None:
 
 
 def test_enable_command_installs_shim(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
     shim_path = tmp_path / "bin" / "codex"
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "auth.json").write_text("{}")
+    config_path.write_text(
+        f"""version = 1
+
+[[targets]]
+name = "acc1"
+codex_home = "{vault}"
+"""
+    )
 
     def fake_install(path, real_bin=None, force=False):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -303,6 +316,10 @@ def test_enable_command_installs_shim(tmp_path: Path, monkeypatch, capsys) -> No
         [
             "codex-hotswap",
             "enable",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
             "--path",
             str(shim_path),
         ],
@@ -315,17 +332,44 @@ def test_enable_command_installs_shim(tmp_path: Path, monkeypatch, capsys) -> No
 
 
 def test_disable_command_removes_shim(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
     shim_path = tmp_path / "bin" / "codex"
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "auth.json").write_text("{}")
+    config_path.write_text(
+        f"""version = 1
+
+[settings]
+shared_codex_home = "{tmp_path / "shared"}"
+
+[[targets]]
+name = "acc1"
+codex_home = "{vault}"
+"""
+    )
 
     def fake_uninstall(path):
         return True
 
+    primed = []
+
+    def fake_activate(self, target, *, destination_home=None):
+        primed.append((target.name, destination_home))
+        return tmp_path / "shared" / "auth.json"
+
     monkeypatch.setattr("codex_hotswap.cli._uninstall_codex_shim", fake_uninstall)
+    monkeypatch.setattr("codex_hotswap.cli.AuthManager.activate", fake_activate)
     monkeypatch.setattr(
         "sys.argv",
         [
             "codex-hotswap",
             "disable",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
             "--path",
             str(shim_path),
         ],
@@ -334,6 +378,8 @@ def test_disable_command_removes_shim(tmp_path: Path, monkeypatch, capsys) -> No
     assert main() == 0
     output = capsys.readouterr().out
     assert "hotswap disabled" in output
+    assert "shared CODEX_HOME primed from target 'acc1'" in output
+    assert primed == [("acc1", None)]
 
 
 def test_install_codex_shim_refuses_to_replace_non_shim_without_force(tmp_path: Path) -> None:

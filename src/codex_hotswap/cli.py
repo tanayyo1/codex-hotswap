@@ -9,7 +9,7 @@ import shutil
 import sys
 
 from . import __version__
-from .auth import ACTIVE_TARGET_METADATA
+from .auth import ACTIVE_TARGET_METADATA, AuthManager
 from .config import Config, ConfigError, DEFAULT_CONFIG_PATH, Settings, Target, load_config, save_config, write_default_config
 from .runner import CodexRunner, format_target_line
 from .runtime import DEFAULT_RUNTIME_ROOT
@@ -303,6 +303,13 @@ def main() -> int:
         return 0
 
     if args.command == "disable":
+        current_target = None
+        auth_warning = None
+        try:
+            current_target = state_store.ensure_current_target(config, state)
+            AuthManager(config).activate(config.get_target(current_target))
+        except ConfigError as exc:
+            auth_warning = str(exc)
         try:
             removed = _uninstall_codex_shim(args.path)
         except ConfigError as exc:
@@ -312,6 +319,10 @@ def main() -> int:
             print(f"codex-hotswap: hotswap disabled at {args.path}")
         else:
             print(f"codex-hotswap: no hotswap shim found at {args.path}")
+        if current_target is not None and auth_warning is None:
+            print(f"codex-hotswap: shared CODEX_HOME primed from target '{current_target}'")
+        elif auth_warning is not None:
+            print(f"codex-hotswap: warning: could not prime shared CODEX_HOME auth: {auth_warning}")
         print("codex-hotswap: run 'hash -r' if your shell still resolves the old path")
         return 0
 

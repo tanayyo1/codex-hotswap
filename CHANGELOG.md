@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.3.1]
+
+### Fixed
+
+- Made `codex-hotswap disable` prime the shared `~/.codex/auth.json` from the current target before removing the shim, so plain `codex` works immediately for fresh installs.
+- Stopped `enable` and `disable` tests from accidentally depending on a real machine config.
+
 ## [0.3.0]
 
 ### Changed

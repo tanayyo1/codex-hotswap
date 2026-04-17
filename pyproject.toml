@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-hotswap"
-version = "0.3.0"
+version = "0.3.1"
 description = "Rotate Codex accounts and resume sessions after rate-limit style failures without breaking normal Codex history."
 readme = "README.md"
 license = "MIT"

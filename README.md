@@ -1,7 +1,7 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 `codex-hotswap` automatically switches Codex to another logged-in account when the current one hits usage limits, while keeping normal repo history and `/resume`, even across multiple wrapped Codex sessions.
 
@@ -87,6 +87,8 @@ Turn hotswap off:
 codex-hotswap disable
 hash -r
 ```
+
+`disable` also primes your shared `~/.codex` auth from the current target so plain `codex` works right away.
 
 Turn hotswap back on:
 
@@ -195,7 +197,7 @@ What they mean:
 - `codex-hotswap use acc1` = choose starting account
 - `codex-hotswap login acc1` = log in one account
 - `codex-hotswap enable` = turn hotswap on for normal `codex`
-- `codex-hotswap disable` = turn hotswap off and use normal `codex`
+- `codex-hotswap disable` = turn hotswap off, prime shared auth, and use normal `codex`
 - `codex-hotswap reset` = clear exhausted markers
 
 ## If You Want Named Accounts Instead
