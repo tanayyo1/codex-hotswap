@@ -104,6 +104,14 @@ def build_parser(argv0: str) -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Run codex through the hotswap wrapper", parents=[common])
     run_parser.add_argument("args", nargs=argparse.REMAINDER)
 
+    enable_parser = subparsers.add_parser("enable", help="Turn hotswap on for normal codex usage", parents=[common])
+    enable_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+    enable_parser.add_argument("--real-bin", type=Path, help="Explicit path to the real codex binary")
+    enable_parser.add_argument("--force", action="store_true", help="Overwrite an existing hotswap shim at the target path")
+
+    disable_parser = subparsers.add_parser("disable", help="Turn hotswap off and restore normal codex usage", parents=[common])
+    disable_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
+
     install_shim_parser = subparsers.add_parser("install-shim", help="Install a codex shim that routes through codex-hotswap", parents=[common])
     install_shim_parser.add_argument("--path", type=Path, default=Path.home() / ".local" / "bin" / "codex")
     install_shim_parser.add_argument("--real-bin", type=Path, help="Explicit path to the real codex binary")
@@ -286,6 +294,29 @@ def main() -> int:
             print(f"codex-hotswap: {exc}", file=sys.stderr)
             return 1
         print(path)
+        return 0
+
+    if args.command == "enable":
+        try:
+            path = _install_codex_shim(args.path, real_bin=args.real_bin, force=args.force)
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}", file=sys.stderr)
+            return 1
+        print(f"codex-hotswap: hotswap enabled at {path}")
+        print("codex-hotswap: run 'hash -r' if your shell still resolves an older codex path")
+        return 0
+
+    if args.command == "disable":
+        try:
+            removed = _uninstall_codex_shim(args.path)
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}", file=sys.stderr)
+            return 1
+        if removed:
+            print(f"codex-hotswap: hotswap disabled at {args.path}")
+        else:
+            print(f"codex-hotswap: no hotswap shim found at {args.path}")
+        print("codex-hotswap: run 'hash -r' if your shell still resolves the old path")
         return 0
 
     if args.command == "uninstall-shim":

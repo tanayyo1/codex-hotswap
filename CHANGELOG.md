@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.6]
+
+### Added
+
+- Added `codex-hotswap enable` and `codex-hotswap disable` as simpler aliases for turning the normal `codex` shim on and off.
+
+### Changed
+
+- Clarified the README around the single wrapped-session design and the fallback flow for plain multi-session Codex use.
+
 ## [0.2.5]
 
 ### Fixed

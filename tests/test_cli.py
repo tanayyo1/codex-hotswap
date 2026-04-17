@@ -289,6 +289,53 @@ def test_install_and_uninstall_codex_shim(tmp_path: Path) -> None:
     assert not shim_path.exists()
 
 
+def test_enable_command_installs_shim(tmp_path: Path, monkeypatch, capsys) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+
+    def fake_install(path, real_bin=None, force=False):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# codex-hotswap shim\n")
+        return path
+
+    monkeypatch.setattr("codex_hotswap.cli._install_codex_shim", fake_install)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "enable",
+            "--path",
+            str(shim_path),
+        ],
+    )
+
+    assert main() == 0
+    output = capsys.readouterr().out
+    assert "hotswap enabled" in output
+    assert shim_path.exists()
+
+
+def test_disable_command_removes_shim(tmp_path: Path, monkeypatch, capsys) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+
+    def fake_uninstall(path):
+        return True
+
+    monkeypatch.setattr("codex_hotswap.cli._uninstall_codex_shim", fake_uninstall)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "disable",
+            "--path",
+            str(shim_path),
+        ],
+    )
+
+    assert main() == 0
+    output = capsys.readouterr().out
+    assert "hotswap disabled" in output
+
+
 def test_install_codex_shim_refuses_to_replace_non_shim_without_force(tmp_path: Path) -> None:
     shim_path = tmp_path / "bin" / "codex"
     shim_path.parent.mkdir(parents=True)

@@ -1,7 +1,7 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.2.5-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.2.6-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 `codex-hotswap` automatically switches Codex to another logged-in account when the current one hits usage limits, while keeping normal repo history and `/resume`.
 
@@ -77,6 +77,24 @@ codex
 
 That is the normal daily workflow after setup.
 
+### Want normal Codex back temporarily?
+
+Turn hotswap off:
+
+```bash
+codex-hotswap disable
+hash -r
+```
+
+Turn hotswap back on:
+
+```bash
+codex-hotswap enable
+hash -r
+```
+
+Use this if you want to work in many plain Codex tabs for a while and do not need automatic account failover in those sessions.
+
 ## What You Use Every Day
 
 Most users only need:
@@ -147,6 +165,8 @@ codex-hotswap current
 codex-hotswap use <target>
 codex-hotswap next
 codex-hotswap login <target>
+codex-hotswap enable
+codex-hotswap disable
 codex-hotswap reset
 codex-hotswap reset <target>
 codex-hotswap install-shim
@@ -159,6 +179,8 @@ What they mean:
 - `codex-hotswap status` = show targets and exhaustion state
 - `codex-hotswap use acc1` = choose starting account
 - `codex-hotswap login acc1` = log in one account
+- `codex-hotswap enable` = turn hotswap on for normal `codex`
+- `codex-hotswap disable` = turn hotswap off and use normal `codex`
 - `codex-hotswap reset` = clear exhausted markers
 
 ## If You Want Named Accounts Instead
@@ -251,6 +273,20 @@ Current design supports one wrapped session per shared runtime home.
 
 If you need parallel wrapped sessions, use separate configs with different `shared_codex_home` values.
 
+If you just want plain multi-session Codex without hotswap for a while:
+
+```bash
+codex-hotswap disable
+hash -r
+```
+
+Turn it back on later:
+
+```bash
+codex-hotswap enable
+hash -r
+```
+
 ### `/resume` looks wrong
 
 Make sure you are starting through `codex-hotswap`, not through a separate unmanaged Codex setup with another `CODEX_HOME`.
@@ -295,6 +331,24 @@ No. You still log into each account once. After that, switching is automatic.
 ### Does it support native Windows?
 
 No. Use WSL for now.
+
+### How do I use plain Codex in multiple tabs?
+
+Turn hotswap off first:
+
+```bash
+codex-hotswap disable
+hash -r
+```
+
+Then open as many normal `codex` sessions as you want.
+
+Turn hotswap back on later:
+
+```bash
+codex-hotswap enable
+hash -r
+```
 
 ## Development
 
