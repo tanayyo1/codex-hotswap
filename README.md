@@ -39,6 +39,12 @@ If Codex emits a matched usage-limit or rate-limit failure, `codex-hotswap`:
 2. activates the next account's auth
 3. runs `codex resume --last`
 
+What you should see in practice:
+
+- the repo and session stay the same
+- the `Account:` line in Codex changes to the next logged-in account
+- work continues in the same repo/thread unless the next account is also exhausted
+
 ## Quick Start
 
 For four accounts named `acc1`, `acc2`, `acc3`, `acc4`:
@@ -153,6 +159,23 @@ codex "fix the failing tests"
 codex-hot --search
 ```
 
+### What A Real Swap Looks Like
+
+When a swap works, the important signal is not a new repo or a new `/resume` list.
+
+The important signal is:
+
+- same repo directory
+- same Codex session or thread
+- different logged-in account underneath
+
+If account `acc1` hits a limit and `acc2` is available, a normal swap should feel like:
+
+1. Codex hits a usage-limit banner
+2. `codex-hotswap` rotates to the next target
+3. `codex resume --last` runs
+4. the session continues, but the `Account:` line now shows the next account
+
 ## The `codex` Shim
 
 The shim is a tiny script placed at `~/.local/bin/codex`.
@@ -251,6 +274,35 @@ Check:
 
 The live detector is conservative on purpose. If Codex changes its failure banner, `codex-hotswap` may need an update before automatic rotation works again.
 
+### `codex-hotswap: no non-exhausted targets remain`
+
+This means `codex-hotswap` believes every configured target is currently exhausted.
+
+Common reasons:
+
+- the current account hit a limit
+- the next account also hit a limit immediately after rotation
+- other accounts were already marked exhausted from earlier tests
+
+Check state:
+
+```bash
+codex-hotswap status
+```
+
+Clear exhaustion markers:
+
+```bash
+codex-hotswap reset
+```
+
+Or start directly from a specific account:
+
+```bash
+codex-hotswap use acc3
+codex
+```
+
 ### `/resume` Looks Wrong
 
 Make sure you are starting through `codex-hotswap`, not a separate unmanaged `codex` flow using some other `CODEX_HOME`.
@@ -266,6 +318,8 @@ Run from the repo you care about:
 cd ~/your-repo
 codex
 ```
+
+If a swap succeeds, `/resume` should still behave like normal Codex for that repo because the shared runtime home stays the same. The account changes underneath; the shared session store does not.
 
 ### Another Wrapped Session Is Already Running
 
@@ -283,6 +337,7 @@ What it does well:
 - preserves the usual `/resume` workflow by repo
 - isolates multiple account logins
 - swaps account auth without changing your workspace
+- preserves the same repo/session flow across account swaps
 - checks setup health with `doctor`
 
 What it does not guarantee:
