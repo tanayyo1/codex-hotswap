@@ -8,15 +8,11 @@ import os
 import shutil
 import sys
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - platform-specific
-    fcntl = None
-
 from . import __version__
 from .auth import ACTIVE_TARGET_METADATA
 from .config import Config, ConfigError, DEFAULT_CONFIG_PATH, Settings, Target, load_config, save_config, write_default_config
-from .runner import CodexRunner, RUNTIME_LOCK_FILENAME, format_target_line
+from .runner import CodexRunner, format_target_line
+from .runtime import DEFAULT_RUNTIME_ROOT
 from .state import DEFAULT_STATE_PATH, StateStore
 
 
@@ -527,12 +523,17 @@ def _run_doctor(
         print("shared home status: missing")
         issues.append("shared home is missing")
 
-    shared_auth = shared_home / "auth.json"
-    if shared_auth.exists():
-        print("shared auth: present")
+    print("shared auth: not required")
+
+    print(f"runtime root: {DEFAULT_RUNTIME_ROOT}")
+    try:
+        DEFAULT_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print("runtime root status: error")
+        print(f"runtime root detail: {exc}")
+        issues.append("runtime root is not writable")
     else:
-        print("shared auth: missing")
-        issues.append("shared auth.json is missing")
+        print("runtime root status: ok")
 
     print(f"current target: {current_target}")
 
@@ -566,23 +567,17 @@ def _run_doctor(
         try:
             payload = json.loads(active_target_metadata.read_text())
         except (json.JSONDecodeError, OSError):
-            print("shared auth source: unreadable")
-            issues.append("shared auth metadata is unreadable")
+            print("last wrapped target: unreadable")
+            issues.append("shared activation metadata is unreadable")
         else:
             metadata_target = payload.get("target") or "unknown"
             activated_at = payload.get("activated_at") or "unknown"
-            print(f"shared auth source: {metadata_target}")
-            print(f"shared auth activated at: {activated_at}")
+            print(f"last wrapped target: {metadata_target}")
+            print(f"last wrapped activation: {activated_at}")
     else:
-        print("shared auth source: unknown")
+        print("last wrapped target: unknown")
 
-    lock_path = shared_home / RUNTIME_LOCK_FILENAME
-    lock_status, lock_detail = _probe_runtime_lock(lock_path)
-    print(f"shared home lock: {lock_status}")
-    if lock_detail:
-        print(f"shared home lock detail: {lock_detail}")
-    if lock_status == "error":
-        issues.append("shared home lock could not be inspected")
+    print("parallel wrapped sessions: supported")
 
     for target in config.targets:
         vault = Path(target.expanded_codex_home()) if target.expanded_codex_home() else None
@@ -627,28 +622,6 @@ def _run_doctor(
 
     print("doctor status: ok")
     return 0
-
-
-def _probe_runtime_lock(lock_path: Path) -> tuple[str, str | None]:
-    if fcntl is None:
-        return "unsupported", "shared-home locking is not supported on this platform"
-    if not lock_path.exists():
-        return "idle", None
-    try:
-        with lock_path.open("a+", encoding="utf-8") as handle:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                handle.seek(0)
-                detail = handle.read().strip() or None
-                return "busy", detail
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                handle.seek(0)
-                detail = handle.read().strip() or None
-                return "idle", detail
-    except OSError as exc:
-        return "error", str(exc)
 
 
 if __name__ == "__main__":

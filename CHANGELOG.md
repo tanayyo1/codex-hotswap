@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Changed
+
+- Replaced the single shared wrapped runtime with per-session runtime overlays, so wrapped Codex sessions can run in parallel while still sharing the normal Codex history store.
+- Kept account auth private to each wrapped session by copying `auth.json` into the overlay instead of mutating the shared store in place.
+- Updated `doctor` and the README to describe the overlay model and parallel wrapped-session support.
+
+### Added
+
+- Added runtime overlay coverage to the test suite for shared-store links, private auth, and concurrent wrapped-session setup.
+
 ## [0.2.6]
 
 ### Added

@@ -37,10 +37,8 @@ except ImportError:  # pragma: no cover - platform-specific
 from .auth import AuthManager
 from .config import Config, ConfigError, Target
 from .detect import TriggerDetector
+from .runtime import RuntimeHome
 from .state import StateStore
-
-RUNTIME_LOCK_FILENAME = ".codex-hotswap.lock"
-
 
 @dataclass(slots=True)
 class RunOutcome:
@@ -54,54 +52,6 @@ class InteractiveResult:
     output: bytearray
     exit_code: int
     live_trigger_pattern: str | None = None
-
-
-class SharedHomeSessionLock:
-    def __init__(self, shared_home: Path, initial_target: str) -> None:
-        self.shared_home = shared_home
-        self.current_target = initial_target
-        self.lock_path = shared_home / RUNTIME_LOCK_FILENAME
-        self._handle = None
-
-    def __enter__(self) -> "SharedHomeSessionLock":
-        if fcntl is None:
-            raise ConfigError("codex-hotswap shared-home locking is not supported on this platform; use WSL for now")
-        self.shared_home.mkdir(parents=True, exist_ok=True)
-        self._handle = self.lock_path.open("a+", encoding="utf-8")
-        try:
-            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            self._handle.close()
-            self._handle = None
-            raise ConfigError(
-                "another codex-hotswap session is already using the shared CODEX_HOME; "
-                "parallel wrapped sessions require a different shared_codex_home"
-            ) from exc
-        self.update_target(self.current_target)
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if self._handle is None:
-            return
-        try:
-            self._handle.seek(0)
-            self._handle.truncate()
-            self._handle.flush()
-            os.fsync(self._handle.fileno())
-            fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            self._handle.close()
-            self._handle = None
-
-    def update_target(self, target: str) -> None:
-        self.current_target = target
-        if self._handle is None:
-            return
-        self._handle.seek(0)
-        self._handle.truncate()
-        self._handle.write(f"pid={os.getpid()}\ntarget={target}\n")
-        self._handle.flush()
-        os.fsync(self._handle.fileno())
 
 
 class CodexRunner:
@@ -132,12 +82,12 @@ class CodexRunner:
             print("codex-hotswap: no runnable targets available")
             return 1
         try:
-            with self._acquire_runtime_lock(current_name) as runtime_lock:
+            with RuntimeHome(config=self.config, auth_manager=self.auth_manager) as runtime_home:
                 target = self.config.get_target(current_name)
                 swaps = 0
                 current_args = list(user_args)
                 while True:
-                    outcome = self._invoke(target, current_args)
+                    outcome = self._invoke(target, current_args, runtime_home=runtime_home.path)
                     if not outcome.triggered:
                         return outcome.exit_code
 
@@ -158,7 +108,6 @@ class CodexRunner:
                         return 1
 
                     self.state_store.set_current_target(state, next_name)
-                    runtime_lock.update_target(next_name)
                     target = self.config.get_target(next_name)
                     print(f"codex-hotswap: trigger matched; rotating to '{next_name}'")
                     time.sleep(self.config.settings.swap_delay_seconds)
@@ -200,9 +149,9 @@ class CodexRunner:
             return True, text
         return False, text
 
-    def _invoke(self, target: Target, user_args: list[str]) -> RunOutcome:
-        self.auth_manager.activate(target)
-        result = self._run_runtime_passthrough(target, user_args, announce=True)
+    def _invoke(self, target: Target, user_args: list[str], *, runtime_home: Path) -> RunOutcome:
+        self.auth_manager.activate(target, destination_home=runtime_home)
+        result = self._run_runtime_passthrough(target, user_args, runtime_home=runtime_home, announce=True)
         if result.live_trigger_pattern is not None:
             return RunOutcome(
                 exit_code=result.exit_code,
@@ -223,13 +172,15 @@ class CodexRunner:
         target: Target,
         user_args: list[str],
         *,
+        runtime_home: Path,
         announce: bool = False,
     ) -> InteractiveResult:
         command = self.build_command(target, user_args)
-        env = self.build_runtime_env()
+        env = self.build_runtime_env(runtime_home=runtime_home)
         if announce:
             print(f"codex-hotswap: using target '{target.name}'")
-            print(f"codex-hotswap: shared CODEX_HOME={self.config.shared_codex_home_path()}")
+            print(f"codex-hotswap: runtime CODEX_HOME={runtime_home}")
+            print(f"codex-hotswap: shared store={self.config.shared_codex_home_path()}")
             if target.codex_home:
                 print(f"codex-hotswap: auth vault={target.expanded_codex_home()}")
         return self._spawn_interactive(command, env)
@@ -262,11 +213,11 @@ class CodexRunner:
                     return value
         return None
 
-    def build_runtime_env(self) -> dict[str, str]:
+    def build_runtime_env(self, *, runtime_home: Path | None = None) -> dict[str, str]:
         env = os.environ.copy()
-        shared_home = self.config.shared_codex_home_path()
-        env["CODEX_HOME"] = str(shared_home)
-        os.makedirs(shared_home, exist_ok=True)
+        resolved_runtime_home = runtime_home or self.config.shared_codex_home_path()
+        env["CODEX_HOME"] = str(resolved_runtime_home)
+        os.makedirs(resolved_runtime_home, exist_ok=True)
         return env
 
     def build_login_env(self, target: Target) -> dict[str, str]:
@@ -276,12 +227,6 @@ class CodexRunner:
         if codex_home:
             os.makedirs(codex_home, exist_ok=True)
         return env
-
-    def runtime_lock_path(self) -> Path:
-        return self.config.shared_codex_home_path() / RUNTIME_LOCK_FILENAME
-
-    def _acquire_runtime_lock(self, target_name: str) -> SharedHomeSessionLock:
-        return SharedHomeSessionLock(self.config.shared_codex_home_path(), target_name)
 
     def _supports_interactive_bridge(self) -> bool:
         return fcntl is not None and pty is not None and termios is not None and tty is not None

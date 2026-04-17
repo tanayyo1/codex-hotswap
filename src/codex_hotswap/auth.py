@@ -17,7 +17,7 @@ ACTIVE_TARGET_METADATA = ".codex-hotswap-active-target.json"
 class AuthManager:
     config: Config
 
-    def activate(self, target: Target) -> Path:
+    def activate(self, target: Target, *, destination_home: Path | None = None) -> Path:
         source_home = target.expanded_codex_home()
         if source_home is None:
             raise ConfigError(f"Target {target.name} does not define a login vault")
@@ -26,20 +26,20 @@ class AuthManager:
         if not source_auth.exists():
             raise ConfigError(f"Target {target.name} has no auth.json at {source_auth}")
 
-        shared_home = self.config.shared_codex_home_path()
-        shared_home.mkdir(parents=True, exist_ok=True)
-        destination_auth = shared_home / "auth.json"
+        target_home = destination_home or self.config.shared_codex_home_path()
+        target_home.mkdir(parents=True, exist_ok=True)
+        destination_auth = target_home / "auth.json"
 
         if source_auth.resolve() == destination_auth.resolve(strict=False):
             return destination_auth
 
-        with tempfile.NamedTemporaryFile(dir=shared_home, prefix=".auth-", suffix=".json", delete=False) as handle:
+        with tempfile.NamedTemporaryFile(dir=target_home, prefix=".auth-", suffix=".json", delete=False) as handle:
             temp_path = Path(handle.name)
 
         try:
             shutil.copy2(source_auth, temp_path)
             os.replace(temp_path, destination_auth)
-            self._write_activation_metadata(shared_home, target)
+            self._write_activation_metadata(self.config.shared_codex_home_path(), target)
         except Exception:
             try:
                 temp_path.unlink(missing_ok=True)

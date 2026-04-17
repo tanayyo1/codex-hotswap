@@ -33,10 +33,11 @@ def test_build_command_uses_target_args(tmp_path: Path) -> None:
 
 def test_build_runtime_env_uses_shared_codex_home(tmp_path: Path) -> None:
     runner = build_runner(tmp_path)
+    runtime_home = tmp_path / "runtime-home"
 
-    env = runner.build_runtime_env()
+    env = runner.build_runtime_env(runtime_home=runtime_home)
 
-    assert env["CODEX_HOME"] == str(tmp_path / "shared-codex")
+    assert env["CODEX_HOME"] == str(runtime_home)
     assert env["PATH"] == os.environ["PATH"]
 
 
@@ -74,10 +75,10 @@ def test_login_status_detects_logged_in(monkeypatch, tmp_path: Path) -> None:
 def test_invoke_returns_triggered_for_live_detection(monkeypatch, tmp_path: Path) -> None:
     runner = build_runner(tmp_path)
 
-    def fake_activate(target):
+    def fake_activate(target, *, destination_home=None):
         return None
 
-    def fake_run_runtime_passthrough(target, user_args, announce=False):
+    def fake_run_runtime_passthrough(target, user_args, runtime_home, announce=False):
         return InteractiveResult(
             output=bytearray(b"usage limit"),
             exit_code=0,
@@ -87,7 +88,7 @@ def test_invoke_returns_triggered_for_live_detection(monkeypatch, tmp_path: Path
     monkeypatch.setattr(runner.auth_manager, "activate", fake_activate)
     monkeypatch.setattr(runner, "_run_runtime_passthrough", fake_run_runtime_passthrough)
 
-    outcome = runner._invoke(runner.config.targets[0], [])
+    outcome = runner._invoke(runner.config.targets[0], [], runtime_home=tmp_path / "runtime-home")
 
     assert outcome.triggered is True
     assert outcome.trigger_pattern == r"\brate[_ -]?limit\b"
@@ -118,17 +119,17 @@ def test_invoke_activates_target_before_runtime_run(monkeypatch, tmp_path: Path)
     runner = build_runner(tmp_path)
     activated = []
 
-    def fake_activate(target):
+    def fake_activate(target, *, destination_home=None):
         activated.append(target.name)
         return None
 
-    def fake_run_runtime_passthrough(target, user_args, announce=False):
+    def fake_run_runtime_passthrough(target, user_args, runtime_home, announce=False):
         return InteractiveResult(output=bytearray(b"ok"), exit_code=0)
 
     monkeypatch.setattr(runner.auth_manager, "activate", fake_activate)
     monkeypatch.setattr(runner, "_run_runtime_passthrough", fake_run_runtime_passthrough)
 
-    outcome = runner._invoke(runner.config.targets[0], [])
+    outcome = runner._invoke(runner.config.targets[0], [], runtime_home=tmp_path / "runtime-home")
 
     assert activated == ["primary"]
     assert outcome.triggered is False
@@ -149,27 +150,6 @@ def test_codex_binary_peels_back_to_real_binary_from_shim(tmp_path: Path, monkey
     monkeypatch.setattr("codex_hotswap.runner.shutil.which", lambda name: str(shim) if name == "codex" else None)
 
     assert runner.codex_binary() == str(real)
-
-
-def test_run_returns_error_when_shared_home_lock_is_busy(monkeypatch, tmp_path: Path, capsys) -> None:
-    runner = build_runner(tmp_path)
-    lock = runner.runtime_lock_path()
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock.open("a+", encoding="utf-8")
-
-    try:
-        import fcntl
-
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        exit_code = runner.run([])
-    finally:
-        import fcntl
-
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-
-    assert exit_code == 1
-    assert "another codex-hotswap session is already using the shared CODEX_HOME" in capsys.readouterr().out
 
 
 def test_run_reports_platform_not_supported(monkeypatch, tmp_path: Path, capsys) -> None:

@@ -1,9 +1,9 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.2.6-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
-`codex-hotswap` automatically switches Codex to another logged-in account when the current one hits usage limits, while keeping normal repo history and `/resume`.
+`codex-hotswap` automatically switches Codex to another logged-in account when the current one hits usage limits, while keeping normal repo history and `/resume`, even across multiple wrapped Codex sessions.
 
 ## What This Does
 
@@ -77,6 +77,8 @@ codex
 
 That is the normal daily workflow after setup.
 
+You can open multiple wrapped `codex` sessions in different repos or tabs. Each wrapped launch now gets its own private runtime overlay while still sharing the normal Codex session store.
+
 ### Want normal Codex back temporarily?
 
 Turn hotswap off:
@@ -108,25 +110,33 @@ If the current account hits limits, `codex-hotswap` should rotate to the next ac
 
 ## How It Works
 
-`codex-hotswap` uses two layers of storage:
+`codex-hotswap` uses three layers of storage:
 
-- shared runtime home: `~/.codex`
+- shared Codex store: `~/.codex`
 - per-account auth vaults: `~/.codex-acc1`, `~/.codex-acc2`, and so on
+- per-session runtime overlays: created automatically under `~/.local/state/codex-hotswap/runtime`
 
 What stays shared:
 
 - repo history
 - normal `/resume`
-- the active runtime session store
+- the Codex session store
 
 What stays separate:
 
 - each account login
+- each live wrapped session's `auth.json`
+
+When you launch wrapped `codex`:
+
+1. `codex-hotswap` creates a temporary runtime `CODEX_HOME`
+2. it links that runtime home back to the shared Codex store
+3. it copies the selected account auth into that runtime home
 
 When a limit is hit:
 
 1. the current account is marked exhausted
-2. the next account auth is copied into the shared runtime home
+2. the next account auth replaces only the runtime overlay's private `auth.json`
 3. `codex resume --last` is attempted
 
 What should stay the same:
@@ -138,6 +148,11 @@ What should stay the same:
 What should change:
 
 - the logged-in account
+
+Why this matters:
+
+- wrapped sessions can run in parallel now
+- one wrapped session changing accounts no longer changes the auth underneath another wrapped session
 
 ## Example
 
@@ -267,13 +282,9 @@ codex-hotswap use acc3
 codex
 ```
 
-### Another wrapped session is already using the shared home
+### I want plain Codex with no wrapper for a while
 
-Current design supports one wrapped session per shared runtime home.
-
-If you need parallel wrapped sessions, use separate configs with different `shared_codex_home` values.
-
-If you just want plain multi-session Codex without hotswap for a while:
+Turn hotswap off:
 
 ```bash
 codex-hotswap disable
@@ -286,6 +297,8 @@ Turn it back on later:
 codex-hotswap enable
 hash -r
 ```
+
+You only need this if you want raw Codex with no automatic failover. Wrapped multi-session use is supported now.
 
 ### `/resume` looks wrong
 
@@ -302,17 +315,18 @@ codex
 
 What it does well:
 
-- keeps normal repo/session history in a shared Codex home
+- keeps normal repo/session history in a shared Codex store
 - preserves `/resume` behavior by repo
 - isolates multiple account logins
 - swaps account auth without changing your workspace
+- supports multiple wrapped sessions by giving each one a private runtime overlay
 
 What it does not guarantee:
 
 - perfect detection of every future Codex failure banner
 - a real upstream usage meter from Codex
 - perfect resume behavior if Codex changes its internals
-- multiple wrapped sessions in the same shared runtime home
+- perfect compatibility if Codex changes its storage layout significantly
 
 ## FAQ
 
@@ -322,7 +336,7 @@ No. If you install the shim, you can just use normal `codex`.
 
 ### Will repo chats stay separate?
 
-Yes. The shared runtime home keeps normal Codex history, so `/resume` should still stay organized by repo.
+Yes. The shared Codex store keeps normal Codex history, so `/resume` should still stay organized by repo.
 
 ### Does it log into all accounts automatically?
 
@@ -334,7 +348,9 @@ No. Use WSL for now.
 
 ### How do I use plain Codex in multiple tabs?
 
-Turn hotswap off first:
+You can keep hotswap on now. Wrapped `codex` sessions use private runtime overlays, so multiple wrapped tabs are supported.
+
+If you want raw Codex with no wrapper, turn hotswap off first:
 
 ```bash
 codex-hotswap disable

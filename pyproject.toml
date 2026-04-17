@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-hotswap"
-version = "0.2.6"
-description = "Rotate Codex launch targets and resume the latest session after rate-limit style failures."
+version = "0.3.0"
+description = "Rotate Codex accounts and resume sessions after rate-limit style failures without breaking normal Codex history."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

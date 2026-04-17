@@ -455,6 +455,7 @@ codex_home = "{vault}"
     output = capsys.readouterr().out
     assert "doctor status: ok" in output
     assert "target acc1 login status: ok" in output
+    assert "parallel wrapped sessions: supported" in output
 
 
 def test_doctor_reports_missing_auth(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -493,7 +494,7 @@ codex_home = "{vault}"
     assert main() == 1
     output = capsys.readouterr().out
     assert "doctor status: issues found" in output
-    assert "shared auth.json is missing" in output
+    assert "acc1 auth.json is missing" in output
 
 
 def test_doctor_reports_inactive_shim_on_path(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -501,7 +502,6 @@ def test_doctor_reports_inactive_shim_on_path(tmp_path: Path, monkeypatch, capsy
     state_path = tmp_path / "state.json"
     shared_home = tmp_path / "shared"
     shared_home.mkdir()
-    (shared_home / "auth.json").write_text("{}")
     vault = tmp_path / "vault"
     vault.mkdir()
     (vault / "auth.json").write_text("{}")
