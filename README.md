@@ -34,6 +34,43 @@ Heavy Codex users hit an annoying problem:
 - swap only the active auth when a limit banner appears
 - continue with `codex resume --last`
 
+## Start Here
+
+If `pipx` is not installed on Ubuntu or Debian:
+
+```bash
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+```
+
+Restart your shell after `pipx ensurepath`.
+
+Then run this:
+
+```bash
+pipx install git+https://github.com/tanayyo1/codex-hotswap.git
+codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
+codex-hotswap use acc1
+codex
+```
+
+That is the shortest real setup path.
+
+What happens:
+
+- installs the tool
+- creates 4 account slots: `acc1`, `acc2`, `acc3`, `acc4`
+- asks you to log in to each account
+- makes normal `codex` go through `codex-hotswap`
+
+After setup, daily use is just:
+
+```bash
+cd ~/your-repo
+codex
+```
+
 ## Super Simple Explanation
 
 Think of it like this:
@@ -66,53 +103,6 @@ What you should see in practice:
 - the repo and session stay the same
 - the `Account:` line in Codex changes to the next logged-in account
 - work continues in the same repo/thread unless the next account is also exhausted
-
-## Fastest Setup
-
-If you just want the easiest path, run:
-
-```bash
-pipx install git+https://github.com/tanayyo1/codex-hotswap.git
-codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
-codex-hotswap use acc1
-codex
-```
-
-That is the shortest real setup flow.
-
-What it does:
-
-- installs the tool
-- creates 4 account slots: `acc1`, `acc2`, `acc3`, `acc4`
-- asks you to log in to each one
-- makes normal `codex` go through `codex-hotswap`
-
-After that, your normal workflow is just:
-
-```bash
-cd ~/your-repo
-codex
-```
-
-## Quick Start
-
-For four accounts named `acc1`, `acc2`, `acc3`, `acc4`:
-
-```bash
-pipx install git+https://github.com/tanayyo1/codex-hotswap.git
-codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
-codex-hotswap use acc1
-codex
-```
-
-That does the same thing as the fast setup above:
-
-- installs `codex-hotswap`
-- creates four auth vault targets
-- walks you through login for each account
-- installs an optional `codex` shim so your normal command stays `codex`
-
-Each account login is still interactive. The setup is one command to orchestrate everything, not one command to silently authenticate four accounts.
 
 ## What You Actually Do Every Day
 
@@ -161,7 +151,7 @@ Here is the simplest way to think about the commands:
 
 ## Setup
 
-### Fastest Path
+### Default Setup
 
 ```bash
 codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
@@ -187,6 +177,8 @@ codex-hotswap setup --force --count 4 --prefix acc --login --device-auth --insta
 ```
 
 If you rerun `setup` with the same names, the generated targets are updated instead of failing on duplicates.
+
+Each account login is still interactive. The setup command walks you through them in sequence.
 
 ### What `login` Does
 
