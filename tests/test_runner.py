@@ -170,3 +170,11 @@ def test_run_returns_error_when_shared_home_lock_is_busy(monkeypatch, tmp_path: 
 
     assert exit_code == 1
     assert "another codex-hotswap session is already using the shared CODEX_HOME" in capsys.readouterr().out
+
+
+def test_run_reports_platform_not_supported(monkeypatch, tmp_path: Path, capsys) -> None:
+    runner = build_runner(tmp_path)
+    monkeypatch.setattr(runner, "_supports_wrapped_runtime", lambda: False)
+
+    assert runner.run([]) == 1
+    assert "wrapped Codex sessions are not supported on this platform yet" in capsys.readouterr().out

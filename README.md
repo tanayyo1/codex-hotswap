@@ -1,9 +1,16 @@
 # codex-hotswap
 
 [![CI](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml/badge.svg)](https://github.com/tanayyo1/codex-hotswap/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
+[![version](https://img.shields.io/badge/version-0.2.5-blue.svg)](https://github.com/tanayyo1/codex-hotswap)
 
 `codex-hotswap` lets you keep using Codex in the terminal with your normal repo history and `/resume`, while automatically swapping to another logged-in account when the current one hits a limit.
+
+Current platform status:
+
+- Linux: supported
+- macOS: expected to work, but less field-tested
+- Windows native: not supported yet
+- Windows users should use WSL for now
 
 ## In One Sentence
 

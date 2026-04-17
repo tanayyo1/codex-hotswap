@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.5]
+
+### Fixed
+
+- Replaced Windows import crashes with explicit platform-support errors and guidance to use WSL for now.
+- Stopped advertising the package as OS-independent in metadata.
+
 ## [0.2.4]
 
 ### Fixed

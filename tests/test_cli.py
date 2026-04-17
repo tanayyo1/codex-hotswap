@@ -321,6 +321,22 @@ def test_install_codex_shim_refuses_to_replace_non_shim_with_force(tmp_path: Pat
         raise AssertionError("expected ConfigError")
 
 
+def test_install_codex_shim_rejects_windows(tmp_path: Path, monkeypatch) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+    real_bin = tmp_path / "real" / "codex"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\nexit 0\n")
+
+    monkeypatch.setattr("codex_hotswap.cli.os.name", "nt")
+
+    try:
+        _install_codex_shim(shim_path, real_bin=real_bin, force=True)
+    except ConfigError as exc:
+        assert "Windows shim install is not supported yet" in str(exc)
+    else:
+        raise AssertionError("expected ConfigError")
+
+
 def test_setup_install_shim_failure_returns_error(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.toml"
     state_path = tmp_path / "state.json"

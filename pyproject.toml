@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-hotswap"
-version = "0.2.4"
+version = "0.2.5"
 description = "Rotate Codex launch targets and resume the latest session after rate-limit style failures."
 readme = "README.md"
 license = "MIT"
@@ -16,7 +16,9 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "Operating System :: OS Independent",
+  "Operating System :: POSIX",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",

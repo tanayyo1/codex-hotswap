@@ -3,11 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 from dataclasses import replace
-import fcntl
 import json
 import os
 import shutil
 import sys
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - platform-specific
+    fcntl = None
 
 from . import __version__
 from .auth import ACTIVE_TARGET_METADATA
@@ -408,6 +412,8 @@ def _merge_setup_targets(config: Config, generated_targets: list[Target], *, rep
 
 
 def _install_codex_shim(path: Path, *, real_bin: Path | None = None, force: bool = False) -> Path:
+    if os.name == "nt":
+        raise ConfigError("Windows shim install is not supported yet; use WSL for now")
     if real_bin is None:
         real_bin = _resolve_real_codex_binary(path)
     if real_bin is None:
@@ -593,6 +599,8 @@ def _run_doctor(
 
 
 def _probe_runtime_lock(lock_path: Path) -> tuple[str, str | None]:
+    if fcntl is None:
+        return "unsupported", "shared-home locking is not supported on this platform"
     if not lock_path.exists():
         return "idle", None
     try:

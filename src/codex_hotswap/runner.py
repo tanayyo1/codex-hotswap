@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import errno
-import fcntl
 import os
 from pathlib import Path
-import pty
 import select
 import shlex
 import shutil
@@ -13,10 +11,28 @@ import signal
 import struct
 import sys
 import tempfile
-import termios
 import subprocess
 import time
-import tty
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - platform-specific
+    fcntl = None
+
+try:
+    import pty
+except ImportError:  # pragma: no cover - platform-specific
+    pty = None
+
+try:
+    import termios
+except ImportError:  # pragma: no cover - platform-specific
+    termios = None
+
+try:
+    import tty
+except ImportError:  # pragma: no cover - platform-specific
+    tty = None
 
 from .auth import AuthManager
 from .config import Config, ConfigError, Target
@@ -48,6 +64,8 @@ class SharedHomeSessionLock:
         self._handle = None
 
     def __enter__(self) -> "SharedHomeSessionLock":
+        if fcntl is None:
+            raise ConfigError("codex-hotswap shared-home locking is not supported on this platform; use WSL for now")
         self.shared_home.mkdir(parents=True, exist_ok=True)
         self._handle = self.lock_path.open("a+", encoding="utf-8")
         try:
@@ -57,7 +75,7 @@ class SharedHomeSessionLock:
             self._handle = None
             raise ConfigError(
                 "another codex-hotswap session is already using the shared CODEX_HOME; "
-                "finish that session first or use a different shared_codex_home"
+                "parallel wrapped sessions require a different shared_codex_home"
             ) from exc
         self.update_target(self.current_target)
         return self
@@ -101,6 +119,9 @@ class CodexRunner:
         self.real_codex_binary = real_codex_binary
 
     def run(self, user_args: list[str]) -> int:
+        if not self._supports_wrapped_runtime():
+            print("codex-hotswap: wrapped Codex sessions are not supported on this platform yet; use WSL for now")
+            return 1
         try:
             state = self.state_store.load()
             current_name = self.state_store.ensure_runnable_target(self.config, state)
@@ -160,6 +181,8 @@ class CodexRunner:
             print(f"codex-hotswap: auth vault={target.expanded_codex_home()}")
         command = self.build_command(target, ["login", *login_args])
         env = self.build_login_env(target)
+        if not self._supports_interactive_bridge():
+            return subprocess.call(command, env=env)
         result = self._spawn_interactive(command, env)
         return result.exit_code
 
@@ -259,6 +282,12 @@ class CodexRunner:
 
     def _acquire_runtime_lock(self, target_name: str) -> SharedHomeSessionLock:
         return SharedHomeSessionLock(self.config.shared_codex_home_path(), target_name)
+
+    def _supports_interactive_bridge(self) -> bool:
+        return fcntl is not None and pty is not None and termios is not None and tty is not None
+
+    def _supports_wrapped_runtime(self) -> bool:
+        return self._supports_interactive_bridge()
 
     def _spawn_interactive(self, command: list[str], env: dict[str, str]) -> InteractiveResult:
         if self._should_use_script():
