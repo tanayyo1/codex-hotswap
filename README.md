@@ -5,6 +5,18 @@
 
 `codex-hotswap` lets you keep using Codex in the terminal with your normal repo history and `/resume`, while automatically swapping to another logged-in account when the current one hits a limit.
 
+## In One Sentence
+
+If one Codex account runs out of usage, `codex-hotswap` automatically switches to another account you already logged in, so you can keep working in the same repo.
+
+## Who This Is For
+
+This tool is for people who:
+
+- use Codex in the terminal a lot
+- have more than one Codex account available
+- do not want to manually log out, log back in, and recover the session every time one account hits limits
+
 ## Why This Exists
 
 Heavy Codex users hit an annoying problem:
@@ -21,6 +33,16 @@ Heavy Codex users hit an annoying problem:
 - keep one shared `~/.codex` for normal history and `/resume`
 - swap only the active auth when a limit banner appears
 - continue with `codex resume --last`
+
+## Super Simple Explanation
+
+Think of it like this:
+
+- your chats and repo history stay in one normal Codex home
+- each account login is saved separately
+- when one account is exhausted, this tool swaps to the next saved account
+
+You keep using Codex in the same repo. The account changes underneath.
 
 ## How It Works
 
@@ -45,6 +67,33 @@ What you should see in practice:
 - the `Account:` line in Codex changes to the next logged-in account
 - work continues in the same repo/thread unless the next account is also exhausted
 
+## Fastest Setup
+
+If you just want the easiest path, run:
+
+```bash
+pipx install git+https://github.com/tanayyo1/codex-hotswap.git
+codex-hotswap setup --force --count 4 --prefix acc --login --install-shim
+codex-hotswap use acc1
+codex
+```
+
+That is the shortest real setup flow.
+
+What it does:
+
+- installs the tool
+- creates 4 account slots: `acc1`, `acc2`, `acc3`, `acc4`
+- asks you to log in to each one
+- makes normal `codex` go through `codex-hotswap`
+
+After that, your normal workflow is just:
+
+```bash
+cd ~/your-repo
+codex
+```
+
 ## Quick Start
 
 For four accounts named `acc1`, `acc2`, `acc3`, `acc4`:
@@ -56,7 +105,7 @@ codex-hotswap use acc1
 codex
 ```
 
-What that does:
+That does the same thing as the fast setup above:
 
 - installs `codex-hotswap`
 - creates four auth vault targets
@@ -64,6 +113,17 @@ What that does:
 - installs an optional `codex` shim so your normal command stays `codex`
 
 Each account login is still interactive. The setup is one command to orchestrate everything, not one command to silently authenticate four accounts.
+
+## What You Actually Do Every Day
+
+After setup, most people only need this:
+
+```bash
+cd ~/your-repo
+codex
+```
+
+That is the whole point of the project.
 
 ## Install
 
@@ -87,6 +147,17 @@ Installed commands:
 
 - `codex-hotswap`
 - `codex-hot`
+
+## If You Are Not Technical
+
+Here is the simplest way to think about the commands:
+
+- `codex-hotswap setup ...` = prepare multiple accounts
+- `codex-hotswap login acc1` = log in one account
+- `codex-hotswap use acc1` = choose which account to start with
+- `codex` = use Codex normally after setup
+- `codex-hotswap doctor` = check if everything is set up correctly
+- `codex-hotswap reset` = clear “account exhausted” markers
 
 ## Setup
 
@@ -133,7 +204,7 @@ If a target already appears logged in, `codex-hotswap login <target>` skips the 
 
 ## Daily Use
 
-Pick the account you want to start on:
+Pick the account you want to start on once:
 
 ```bash
 codex-hotswap use acc1
@@ -175,6 +246,27 @@ If account `acc1` hits a limit and `acc2` is available, a normal swap should fee
 2. `codex-hotswap` rotates to the next target
 3. `codex resume --last` runs
 4. the session continues, but the `Account:` line now shows the next account
+
+## Example Real-Life Flow
+
+Example:
+
+1. you are working in `~/tonr`
+2. you run `codex`
+3. Codex shows account `acc1`
+4. `acc1` hits its limit
+5. `codex-hotswap` switches to `acc2`
+6. Codex continues in the same repo
+
+What should stay the same:
+
+- repo directory
+- normal `/resume` behavior
+- your general session flow
+
+What changes:
+
+- the logged-in account
 
 ## The `codex` Shim
 
@@ -262,6 +354,8 @@ codex-hotswap doctor
 - each target's login status
 - shim presence and whether it is the `codex` currently found on `PATH`
 - whether the shared runtime lock is idle or busy
+
+If `doctor status: ok` appears, your setup is healthy.
 
 ### It Is Not Swapping Automatically
 
@@ -369,6 +463,28 @@ codex-hotswap doctor
 codex-hotswap run [codex args...]
 codex-hot [codex args...]
 ```
+
+## Short FAQ
+
+### Do I need to keep using `codex-hot` forever?
+
+No. If you install the shim, you can just use normal `codex`.
+
+### Will my repo chats stay separate?
+
+Yes. The shared runtime home keeps normal Codex history, so `/resume` should still stay organized by repo.
+
+### Does it magically log into all accounts by itself?
+
+No. You still log into each account once. After that, switching is automatic.
+
+### Does it track real Codex usage counters?
+
+No. It reacts to the failure/limit output that Codex shows.
+
+### Can I run multiple wrapped sessions at the same time in the same shared home?
+
+No. That is intentionally blocked because auth swapping in one shared home must stay serialized.
 
 ## Development
 
