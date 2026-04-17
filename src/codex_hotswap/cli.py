@@ -191,11 +191,15 @@ def main() -> int:
         return 1
 
     state_store = StateStore(args.state_path)
-    state = state_store.load()
+    try:
+        state = state_store.load()
+    except ConfigError as exc:
+        print(f"codex-hotswap: {exc}", file=sys.stderr)
+        return 1
 
     if args.command in {"list", "status"}:
         for target in config.targets:
-            print(format_target_line(config, state_store, target.name))
+            print(format_target_line(config, state_store, target.name, state=state))
         return 0
 
     if args.command == "current":
@@ -411,10 +415,10 @@ def _install_codex_shim(path: Path, *, real_bin: Path | None = None, force: bool
 
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        if not force and not _is_codex_shim(path):
-            raise ConfigError(f"Shim path already exists: {path}. Re-run with --force to replace it.")
         if path.is_dir():
             raise ConfigError(f"Shim path is a directory: {path}")
+        if not _is_codex_shim(path):
+            raise ConfigError(f"Refusing to overwrite non-shim file at {path}")
 
     content = _render_codex_shim(real_bin)
     path.write_text(content)

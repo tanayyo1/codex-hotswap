@@ -145,6 +145,7 @@ def test_codex_binary_peels_back_to_real_binary_from_shim(tmp_path: Path, monkey
     )
 
     runner = build_runner(tmp_path)
+    monkeypatch.setenv("CODEX_HOTSWAP_REAL_BIN", "/bad/path/should/not/win")
     monkeypatch.setattr("codex_hotswap.runner.shutil.which", lambda name: str(shim) if name == "codex" else None)
 
     assert runner.codex_binary() == str(real)

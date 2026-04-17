@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project follows semantic versio
 
 ## [Unreleased]
 
+## [0.2.4]
+
+### Fixed
+
+- Refused to overwrite non-shim files during `install-shim`, even when `--force` is used.
+- Converted malformed `config.toml` and `state.json` files into clean user-facing errors instead of Python tracebacks.
+- Stopped binary resolution from depending on an inherited `CODEX_HOTSWAP_REAL_BIN` environment variable.
+
 ## [0.2.3]
 
 ### Fixed

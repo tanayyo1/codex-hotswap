@@ -100,7 +100,12 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
     if not path.exists():
         raise ConfigError(f"Config file not found: {path}")
 
-    raw = tomllib.loads(path.read_text())
+    try:
+        raw = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"Invalid config file {path}: {exc}") from exc
+    except OSError as exc:
+        raise ConfigError(f"Could not read config file {path}: {exc}") from exc
     version = raw.get("version")
     if version != 1:
         raise ConfigError("Config version must be set to 1")

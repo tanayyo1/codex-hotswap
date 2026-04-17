@@ -300,7 +300,23 @@ def test_install_codex_shim_refuses_to_replace_non_shim_without_force(tmp_path: 
     try:
         _install_codex_shim(shim_path, real_bin=real_bin, force=False)
     except ConfigError as exc:
-        assert "already exists" in str(exc)
+        assert "Refusing to overwrite non-shim file" in str(exc)
+    else:
+        raise AssertionError("expected ConfigError")
+
+
+def test_install_codex_shim_refuses_to_replace_non_shim_with_force(tmp_path: Path) -> None:
+    shim_path = tmp_path / "bin" / "codex"
+    shim_path.parent.mkdir(parents=True)
+    shim_path.write_text("#!/bin/sh\nexit 0\n")
+    real_bin = tmp_path / "real" / "codex"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\nexit 0\n")
+
+    try:
+        _install_codex_shim(shim_path, real_bin=real_bin, force=True)
+    except ConfigError as exc:
+        assert "Refusing to overwrite non-shim file" in str(exc)
     else:
         raise AssertionError("expected ConfigError")
 
@@ -466,3 +482,49 @@ codex_home = "{vault}"
     output = capsys.readouterr().out
     assert "shim active on PATH: no" in output
     assert "doctor status: issues found" in output
+
+
+def test_status_reports_invalid_state_file_cleanly(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    state_path = tmp_path / "state.json"
+    config_path.write_text(
+        """version = 1
+
+[[targets]]
+name = "acc1"
+"""
+    )
+    state_path.write_text("not json\n")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "status",
+            "--config-path",
+            str(config_path),
+            "--state-path",
+            str(state_path),
+        ],
+    )
+
+    assert main() == 1
+    assert "Invalid state file" in capsys.readouterr().err
+
+
+def test_status_reports_invalid_config_file_cleanly(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("not toml\n")
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "codex-hotswap",
+            "status",
+            "--config-path",
+            str(config_path),
+        ],
+    )
+
+    assert main() == 1
+    assert "Invalid config file" in capsys.readouterr().err

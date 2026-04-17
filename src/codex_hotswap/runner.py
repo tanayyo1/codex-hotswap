@@ -101,9 +101,12 @@ class CodexRunner:
         self.real_codex_binary = real_codex_binary
 
     def run(self, user_args: list[str]) -> int:
-        state = self.state_store.load()
         try:
+            state = self.state_store.load()
             current_name = self.state_store.ensure_runnable_target(self.config, state)
+        except ConfigError as exc:
+            print(f"codex-hotswap: {exc}")
+            return 1
         except ValueError:
             print("codex-hotswap: no runnable targets available")
             return 1
@@ -214,10 +217,6 @@ class CodexRunner:
     def codex_binary(self) -> str:
         if self.real_codex_binary:
             return self.real_codex_binary
-
-        env_binary = os.environ.get("CODEX_HOTSWAP_REAL_BIN")
-        if env_binary:
-            return env_binary
 
         resolved = shutil.which("codex")
         if resolved is None:
@@ -440,11 +439,11 @@ class CodexRunner:
         return True
 
 
-def format_target_line(config: Config, state_store: StateStore, target_name: str) -> str:
-    state = state_store.load()
-    current_name = state_store.ensure_current_target(config, state)
+def format_target_line(config: Config, state_store: StateStore, target_name: str, state=None) -> str:
+    resolved_state = state or state_store.load()
+    current_name = state_store.ensure_current_target(config, resolved_state)
     marker = "->" if target_name == current_name else "  "
-    exhausted = state.exhausted_targets.get(target_name)
+    exhausted = resolved_state.exhausted_targets.get(target_name)
     suffix = ""
     if exhausted:
         suffix = f" [exhausted: {exhausted.reason}]"

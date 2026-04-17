@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 import json
 
-from .config import Config
+from .config import Config, ConfigError
 
 
 DEFAULT_STATE_PATH = Path.home() / ".local" / "state" / "codex-hotswap" / "state.json"
@@ -33,7 +33,14 @@ class StateStore:
         if not self.path.exists():
             return State()
 
-        raw = json.loads(self.path.read_text())
+        try:
+            raw = json.loads(self.path.read_text())
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"Invalid state file {self.path}: {exc}") from exc
+        except OSError as exc:
+            raise ConfigError(f"Could not read state file {self.path}: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise ConfigError(f"Invalid state file {self.path}: root value must be an object")
         exhausted = {
             name: ExhaustedTarget(**value)
             for name, value in raw.get("exhausted_targets", {}).items()
